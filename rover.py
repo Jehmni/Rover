@@ -682,6 +682,58 @@ def start_pickup():
 
     return jsonify({'success': True, 'message': 'Pickup has commenced'}), 200
 
+# Endpoint for attendees to search and filter events
+@app.route('/api/events/search', methods=['GET'])
+def search_events():
+    # Retrieve query parameters from the request
+    location = request.args.get('location')
+    date = request.args.get('date')
+    event_type = request.args.get('event_type')
+
+    # Query events based on the provided criteria
+    events_query = Event.query
+    if location:
+        events_query = events_query.filter(Event.location == location)
+    if date:
+        events_query = events_query.filter(Event.date == date)
+    if event_type:
+        events_query = events_query.filter(Event.type == event_type)
+
+    # Execute the query and retrieve the events
+    events = events_query.all()
+
+    # Serialize the events data into JSON format
+    serialized_events = [{'id': event.id, 'name': event.name, 'description': event.description} for event in events]
+
+    return jsonify({'events': serialized_events}), 200
+
+# Endpoint for organizers to filter and search for attendees or drivers
+@app.route('/api/users/search', methods=['GET'])
+def search_users():
+    # Retrieve query parameters from the request
+    user_type = request.args.get('user_type')  # Specify 'attendee' or 'driver'
+    criteria1 = request.args.get('criteria1')   # Define your filter criteria
+    criteria2 = request.args.get('criteria2')   # Define additional filter criteria if needed
+
+    # Validate user type
+    if user_type not in ['attendee', 'driver']:
+        return jsonify({'message': 'Invalid user type. Use "attendee" or "driver".'}), 400
+
+    # Query users based on the provided criteria
+    users_query = User.query.filter(User.type == user_type)
+    if criteria1:
+        users_query = users_query.filter(User.criteria1 == criteria1)
+    if criteria2:
+        users_query = users_query.filter(User.criteria2 == criteria2)
+
+    # Execute the query and retrieve the users
+    users = users_query.all()
+
+    # Serialize the users data into JSON format
+    serialized_users = [{'id': user.id, 'username': user.username, 'email': user.email} for user in users]
+
+    return jsonify({'users': serialized_users}), 200
+
 # Define a function to compute the shortest path using Dijkstra's Algorithm
 def dijkstra(graph, start, end):
     # Initialize distances with infinity for all nodes
