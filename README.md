@@ -1,5 +1,5 @@
 # Rover
-Title: Event Pickup Management System
+Event Pickup Management System
 
 Description:
 The Event Pickup Management System is a comprehensive Flask-based application designed to streamline the process of managing event pickups, driver assignments, and user registrations. This system provides a user-friendly interface for event organizers, drivers, and attendees to efficiently coordinate transportation logistics for various events.
