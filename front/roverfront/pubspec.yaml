@@ -1,0 +1,52 @@
+name: roverfront
+description: "Rover — Event Pickup Management System"
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.3.3 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.6
+
+  # ── Supabase: Auth + Database + Realtime + Edge Functions ──
+  supabase_flutter: ^2.0.0
+
+  # ── Firebase: required for FCM push notifications ──
+  # After adding these, run: flutterfire configure
+  # This generates lib/firebase_options.dart and places
+  # google-services.json (Android) / GoogleService-Info.plist (iOS).
+  firebase_core: ^3.0.0
+  firebase_messaging: ^15.0.0
+
+  # ── Device GPS for pickup location ──
+  # Android: add ACCESS_FINE_LOCATION to AndroidManifest.xml
+  # iOS:     add NSLocationWhenInUseUsageDescription to Info.plist
+  geolocator: ^13.0.0
+
+  # ── Optional: Map display on driver screen ──
+  # Requires a Google Maps API key.
+  # Android: add to AndroidManifest.xml <meta-data android:name="com.google.android.geo.API_KEY" ...>
+  # iOS:     call GMSServices.provideAPIKey in AppDelegate
+  # google_maps_flutter: ^2.9.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/logos/
+    - assets/fonts/
+
+  fonts:
+    - family: OpenSans
+      fonts:
+        - asset: assets/fonts/OpenSans.ttf
