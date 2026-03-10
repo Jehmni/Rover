@@ -5,16 +5,14 @@
 //   2. MyApp renamed to RoverApp; home is now AuthGate (session check)
 //   3. LoginPage UI is UNCHANGED — only the button callbacks are wired:
 //        - Login button  → AuthService.login() → role-based navigation
-//        - Sign Up text  → Navigator.push(RegisterPage)
+//        - Sign Up text  → Navigator.push(WelcomePage)   ← new
 //   4. Global `supabase` accessor added for use throughout the app
-//
-// Setup required before flutter run:
-//   • Replace YOUR_SUPABASE_PROJECT_URL and YOUR_SUPABASE_ANON_KEY below
-//     with values from: Supabase Dashboard > Settings > API
-//   • Run `flutterfire configure` to generate lib/firebase_options.dart
-//     (needed by Firebase.initializeApp). Firebase init is wrapped in a
-//     try/catch so the app still runs if Firebase is not yet configured.
+//   5. PendingLink stores deep-link token across navigation transitions
+//   6. AuthGate intercepts rover.app/join/TOKEN deep links (app_links)
 
+import 'dart:async';
+
+import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -22,36 +20,66 @@ import 'package:firebase_core/firebase_core.dart';
 
 import 'constants.dart';
 import 'services/auth_service.dart';
-import 'screens/register_page.dart';
+import 'screens/welcome_page.dart';
+import 'screens/forgot_password_page.dart';
+import 'screens/reset_password_page.dart';
+import 'screens/org_setup_page.dart';
 import 'screens/user_home_page.dart';
 import 'screens/driver_home_page.dart';
 import 'screens/admin_home_page.dart';
+import 'widgets/auth_dialog.dart';
 
 // ─────────────────────────────────────────────────────────────
 // Global Supabase client accessor.
-// Import main.dart and use `supabase.from(...)` anywhere in the app.
 // ─────────────────────────────────────────────────────────────
 final supabase = Supabase.instance.client;
+
+// ─────────────────────────────────────────────────────────────
+// PendingLink — stores org token from a deep link until it is
+// consumed by WelcomePage or OrgSetupPage.
+// ─────────────────────────────────────────────────────────────
+class PendingLink {
+  static String? orgToken;
+  static String? orgName;
+
+  static void clear() {
+    orgToken = null;
+    orgName  = null;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Maps a role string returned by login() to the correct screen.
+// ─────────────────────────────────────────────────────────────
+Widget destinationForRole(String role, {String? orgToken, String? orgName}) {
+  switch (role) {
+    case 'no_org':
+      return OrgSetupPage(
+        initialRole: 'user',
+        orgToken:    orgToken,
+        orgName:     orgName,
+      );
+    case 'admin':   return const AdminHomePage();
+    case 'driver':  return const DriverHomePage();
+    default:        return const UserHomePage();
+  }
+}
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialise Supabase. Replace placeholders with real keys.
-  // Never commit real keys — use --dart-define or a secrets manager.
   await Supabase.initialize(
     url: const String.fromEnvironment(
       'SUPABASE_URL',
-      defaultValue: 'YOUR_SUPABASE_PROJECT_URL',
+      defaultValue: 'https://adswkssbhlqeuewxijep.supabase.co',
     ),
     anonKey: const String.fromEnvironment(
       'SUPABASE_ANON_KEY',
-      defaultValue: 'YOUR_SUPABASE_ANON_KEY',
+      defaultValue:
+          'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkc3drc3NiaGxxZXVld3hpamVwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMwOTcyNTMsImV4cCI6MjA4ODY3MzI1M30.ciU00N7aQDF1hdsVOiEl1yBrD7R6IeV4qZ8cKPtEY2Q',
     ),
   );
 
-  // Initialise Firebase for FCM push notifications.
-  // Requires running `flutterfire configure` first.
-  // Wrapped in try/catch — app still works without Firebase (no push).
   try {
     await Firebase.initializeApp();
   } catch (e) {
@@ -61,9 +89,6 @@ Future<void> main() async {
   runApp(const RoverApp());
 }
 
-// ─────────────────────────────────────────────────────────────
-// RoverApp — root widget.
-// ─────────────────────────────────────────────────────────────
 class RoverApp extends StatelessWidget {
   const RoverApp({super.key});
 
@@ -73,10 +98,9 @@ class RoverApp extends StatelessWidget {
       title: 'Rover',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSwatch()
-            .copyWith(secondary: Colors.blueAccent),
+        colorScheme:
+            ColorScheme.fromSwatch().copyWith(secondary: Colors.blueAccent),
       ),
-      // Named route '/' used by logout handlers in all screens
       initialRoute: '/',
       routes: {
         '/': (_) => const AuthGate(),
@@ -86,10 +110,7 @@ class RoverApp extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────
-// AuthGate — checks for an existing Supabase session on startup.
-// If a valid session exists, navigates directly to the correct
-// home screen without requiring the user to log in again.
-// If no session, shows LoginPage.
+// AuthGate — checks session on startup and handles deep links.
 // ─────────────────────────────────────────────────────────────
 class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
@@ -99,18 +120,102 @@ class AuthGate extends StatefulWidget {
 }
 
 class _AuthGateState extends State<AuthGate> {
-  bool _checking = true;
+  bool _checking        = true;
+  bool _recoveryHandled = false;
+  StreamSubscription<AuthState>? _authSub;
+  StreamSubscription<Uri>?       _linkSub;
 
   @override
   void initState() {
     super.initState();
+    _authSub = supabase.auth.onAuthStateChange.listen((state) {
+      if (!mounted) return;
+      if (state.event == AuthChangeEvent.passwordRecovery &&
+          !_recoveryHandled) {
+        _recoveryHandled = true;
+        setState(() => _checking = false);
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const ResetPasswordPage()),
+        );
+      }
+    });
+    _initDeepLinks();
     _checkSession();
   }
 
-  Future<void> _checkSession() async {
+  @override
+  void dispose() {
+    _authSub?.cancel();
+    _linkSub?.cancel();
+    super.dispose();
+  }
+
+  // ── Deep link initialisation ───────────────────────────────
+  Future<void> _initDeepLinks() async {
+    final appLinks = AppLinks();
+
+    // Cold-start deep link (app launched via a rover.app/join/TOKEN tap)
+    try {
+      final initial = await appLinks.getInitialLink();
+      if (initial != null) _storeToken(initial);
+    } catch (_) {}
+
+    // Warm link (app already running, another link tapped)
+    _linkSub = appLinks.uriLinkStream.listen((uri) {
+      _storeToken(uri);
+      _handleLinkWhileRunning(uri);
+    });
+  }
+
+  void _storeToken(Uri uri) {
+    final token = _extractToken(uri);
+    if (token != null) PendingLink.orgToken = token;
+  }
+
+  String? _extractToken(Uri uri) {
+    final segments = uri.pathSegments;
+    final joinIdx  = segments.indexOf('join');
+    if (joinIdx >= 0 && joinIdx + 1 < segments.length) {
+      return segments[joinIdx + 1];
+    }
+    return null;
+  }
+
+  void _handleLinkWhileRunning(Uri uri) {
+    final token = _extractToken(uri);
+    if (token == null || !mounted) return;
+
     final user = supabase.auth.currentUser;
     if (user == null) {
-      // No active session — show login
+      // Not signed in — show welcome with org pre-filled
+      Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => WelcomePage(orgToken: token),
+      ));
+    }
+    // If already signed in with an org, the user is already on their home
+    // screen — nothing to do (they can share the link with others).
+  }
+
+  // ── Session check ──────────────────────────────────────────
+  Future<void> _checkSession() async {
+    if (!mounted || _recoveryHandled) return;
+
+    // Web recovery-link detection
+    final fragment = Uri.base.fragment;
+    if (fragment.isNotEmpty) {
+      final params = Uri.splitQueryString(fragment);
+      if (params['type'] == 'recovery') {
+        _recoveryHandled = true;
+        if (mounted) setState(() => _checking = false);
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const ResetPasswordPage()),
+        );
+        return;
+      }
+    }
+
+    final user = supabase.auth.currentUser;
+    if (user == null) {
       if (mounted) setState(() => _checking = false);
       return;
     }
@@ -118,32 +223,29 @@ class _AuthGateState extends State<AuthGate> {
     try {
       final profile = await supabase
           .from('profiles')
-          .select('role')
+          .select('role, org_id')
           .eq('id', user.id)
           .single();
 
-      if (!mounted) return;
-      _navigateByRole(profile['role'] as String);
+      if (!mounted || _recoveryHandled) return;
+      final role = profile['org_id'] == null
+          ? 'no_org'
+          : profile['role'] as String;
+
+      _navigateByRole(role);
     } catch (_) {
-      // Profile query failed (e.g. network off) — fall through to login
       if (mounted) setState(() => _checking = false);
     }
   }
 
   void _navigateByRole(String role) {
-    Widget destination;
-    switch (role) {
-      case 'driver':
-        destination = const DriverHomePage();
-        break;
-      case 'admin':
-        destination = const AdminHomePage();
-        break;
-      default:
-        destination = const UserHomePage();
-    }
+    final token = PendingLink.orgToken;
+    final name  = PendingLink.orgName;
     Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => destination),
+      MaterialPageRoute(
+        builder: (_) =>
+            destinationForRole(role, orgToken: token, orgName: name),
+      ),
     );
   }
 
@@ -159,13 +261,12 @@ class _AuthGateState extends State<AuthGate> {
 }
 
 // ═════════════════════════════════════════════════════════════
-// LoginPage — UI is IDENTICAL to the original.
-// Only changes: _handleLogin() wired to AuthService, _buildSignupBtn
-// navigates to RegisterPage.
+// LoginPage — UI unchanged from original.
+// Only changes: _handleLogin() wired to AuthService,
+// "CREATE AN ACCOUNT" button now navigates to WelcomePage.
 // ═════════════════════════════════════════════════════════════
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key, required this.title});
-
   final String title;
 
   @override
@@ -185,12 +286,10 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
-  // ── Login handler ──────────────────────────────────────────
   Future<void> _handleLogin() async {
     final email    = _emailController.text.trim();
     final password = _passwordController.text;
 
-    // Client-side validation (Phase 6 rules)
     if (email.isEmpty || !RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(email)) {
       _showError('Please enter a valid email address.');
       return;
@@ -204,20 +303,8 @@ class _LoginPageState extends State<LoginPage> {
     try {
       final role = await AuthService.login(email: email, password: password);
       if (!mounted) return;
-
-      Widget destination;
-      switch (role) {
-        case 'driver':
-          destination = const DriverHomePage();
-          break;
-        case 'admin':
-          destination = const AdminHomePage();
-          break;
-        default:
-          destination = const UserHomePage();
-      }
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => destination),
+        MaterialPageRoute(builder: (_) => destinationForRole(role)),
       );
     } catch (e) {
       if (mounted) {
@@ -228,11 +315,7 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: Colors.red),
-    );
-  }
+  void _showError(String message) => showErrorDialog(context, message);
 
   // ── Original UI builders (unchanged) ──────────────────────
 
@@ -240,10 +323,7 @@ class _LoginPageState extends State<LoginPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        const Text(
-          'Email',
-          style: kLabelStyle,
-        ),
+        const Text('Email', style: kLabelStyle),
         const SizedBox(height: 10.0),
         Container(
           alignment: Alignment.centerLeft,
@@ -253,16 +333,11 @@ class _LoginPageState extends State<LoginPage> {
             controller: _emailController,
             keyboardType: TextInputType.emailAddress,
             style: const TextStyle(
-              color: Colors.white,
-              fontFamily: 'OpenSans',
-            ),
+                color: Colors.white, fontFamily: 'OpenSans'),
             decoration: const InputDecoration(
               border: InputBorder.none,
               contentPadding: EdgeInsets.only(top: 14.0),
-              prefixIcon: Icon(
-                Icons.email,
-                color: Colors.white,
-              ),
+              prefixIcon: Icon(Icons.email, color: Colors.white),
               hintText: 'Enter your Email',
               hintStyle: kHintTextStyle,
             ),
@@ -276,10 +351,7 @@ class _LoginPageState extends State<LoginPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        const Text(
-          'Password',
-          style: kLabelStyle,
-        ),
+        const Text('Password', style: kLabelStyle),
         const SizedBox(height: 10.0),
         Container(
           alignment: Alignment.centerLeft,
@@ -289,16 +361,11 @@ class _LoginPageState extends State<LoginPage> {
             controller: _passwordController,
             obscureText: true,
             style: const TextStyle(
-              color: Colors.white,
-              fontFamily: 'OpenSans',
-            ),
+                color: Colors.white, fontFamily: 'OpenSans'),
             decoration: const InputDecoration(
               border: InputBorder.none,
               contentPadding: EdgeInsets.only(top: 14.0),
-              prefixIcon: Icon(
-                Icons.lock,
-                color: Colors.white,
-              ),
+              prefixIcon: Icon(Icons.lock, color: Colors.white),
               hintText: 'Enter your Password',
               hintStyle: kHintTextStyle,
             ),
@@ -311,47 +378,36 @@ class _LoginPageState extends State<LoginPage> {
   Widget _buildForgotPasswordBtn() {
     return Container(
       alignment: Alignment.centerRight,
-      child: Padding(
-        padding: const EdgeInsets.only(right: 0.0),
-        child: TextButton(
-          onPressed: () => debugPrint('Forgot Password Button Pressed'),
-          child: const Text(
-            'Forgot Password?',
-            style: kLabelStyle,
-          ),
+      child: TextButton(
+        onPressed: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const ForgotPasswordPage()),
         ),
+        child: const Text('Forgot Password?', style: kLabelStyle),
       ),
     );
   }
 
   Widget _buildRememberMeCheckbox() {
-    return SizedBox(
-      height: 20.0,
-      child: Row(
-        children: <Widget>[
-          Theme(
-            data: ThemeData(unselectedWidgetColor: Colors.white),
-            child: Checkbox(
-              value: _rememberMe,
-              checkColor: Colors.green,
-              activeColor: Colors.white,
-              onChanged: (value) {
-                setState(() {
-                  _rememberMe = value!;
-                });
-              },
-            ),
+    return Row(
+      children: <Widget>[
+        Theme(
+          data: ThemeData(unselectedWidgetColor: Colors.white),
+          child: Checkbox(
+            value: _rememberMe,
+            checkColor: Colors.green,
+            activeColor: Colors.white,
+            onChanged: (value) {
+              setState(() => _rememberMe = value!);
+            },
           ),
-          const Text(
-            'Remember me',
-            style: kLabelStyle,
-          ),
-        ],
-      ),
+        ),
+        const Flexible(
+          child: Text('Remember me', style: kLabelStyle),
+        ),
+      ],
     );
   }
 
-  // Login button — wired to _handleLogin()
   Widget _buildLoginBtn() {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 25.0),
@@ -362,8 +418,7 @@ class _LoginPageState extends State<LoginPage> {
           elevation: 5.0,
           padding: const EdgeInsets.all(15.0),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(30.0),
-          ),
+              borderRadius: BorderRadius.circular(30.0)),
         ),
         child: _isLoading
             ? const CircularProgressIndicator(color: Color(0xFF527DAA))
@@ -381,65 +436,81 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  Widget _buildSignInWithText() {
-    return const Column(
-      children: <Widget>[
-        Text(
-          '- OR -',
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.w400,
+  Widget _buildDividerWithLabel(String label) {
+    return Row(
+      children: [
+        const Expanded(
+            child: Divider(color: Colors.white54, thickness: 0.8)),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white54,
+              fontSize: 12,
+              letterSpacing: 1.2,
+            ),
           ),
         ),
-        SizedBox(height: 20.0),
-        Text(
-          'Sign in with',
-          style: kLabelStyle,
-        ),
+        const Expanded(
+            child: Divider(color: Colors.white54, thickness: 0.8)),
       ],
     );
   }
 
-  Widget _buildSocialBtn(void Function() onTap, AssetImage logo) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        height: 60.0,
-        width: 60.0,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: Colors.white,
-          boxShadow: const [
-            BoxShadow(
-              color: Colors.black26,
-              offset: Offset(0, 2),
-              blurRadius: 6.0,
-            ),
-          ],
-          image: DecorationImage(
-            image: logo,
-          ),
-        ),
+  void _showComingSoon(String provider) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$provider sign-in coming soon.'),
+        backgroundColor: Colors.blueGrey,
+        duration: const Duration(seconds: 2),
       ),
     );
   }
 
-  Widget _buildSocialBtnRow() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 30.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: <Widget>[
-          _buildSocialBtn(
-            () => debugPrint('Login with Facebook'),
-            const AssetImage(
-              'assets/logos/facebook.jpg',
+  Widget _buildSocialBtn({
+    required String label,
+    required void Function() onTap,
+    required AssetImage logo,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        children: [
+          Opacity(
+            opacity: 0.55,
+            child: Container(
+              height: 60.0,
+              width: 60.0,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white,
+                boxShadow: const [
+                  BoxShadow(
+                    color: Colors.black26,
+                    offset: Offset(0, 2),
+                    blurRadius: 6.0,
+                  ),
+                ],
+                image: DecorationImage(image: logo),
+              ),
             ),
           ),
-          _buildSocialBtn(
-            () => debugPrint('Login with Google'),
-            const AssetImage(
-              'assets/logos/google.jpg',
+          const SizedBox(height: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 12,
+              fontFamily: 'OpenSans',
+            ),
+          ),
+          const Text(
+            'coming soon',
+            style: TextStyle(
+              color: Colors.white38,
+              fontSize: 10,
+              fontStyle: FontStyle.italic,
             ),
           ),
         ],
@@ -447,34 +518,65 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  // Sign Up button — navigates to RegisterPage
+  Widget _buildSocialBtnRow() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 24.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          _buildSocialBtn(
+            label: 'Facebook',
+            onTap: () => _showComingSoon('Facebook'),
+            logo: const AssetImage('assets/logos/facebook.jpg'),
+          ),
+          _buildSocialBtn(
+            label: 'Google',
+            onTap: () => _showComingSoon('Google'),
+            logo: const AssetImage('assets/logos/google.jpg'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // "CREATE AN ACCOUNT" now routes to WelcomePage so the user
+  // picks their role from the three-card screen first.
   Widget _buildSignupBtn() {
-    return GestureDetector(
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const RegisterPage()),
-      ),
-      child: RichText(
-        text: const TextSpan(
-          children: [
-            TextSpan(
-              text: 'Don\'t have an Account? ',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 18.0,
-                fontWeight: FontWeight.w400,
+    return Column(
+      children: [
+        const SizedBox(height: 8),
+        _buildDividerWithLabel('NEW HERE?'),
+        const SizedBox(height: 20),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton(
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => WelcomePage(
+                  orgToken: PendingLink.orgToken,
+                  orgName:  PendingLink.orgName,
+                ),
               ),
             ),
-            TextSpan(
-              text: 'Sign Up',
+            style: OutlinedButton.styleFrom(
+              side: const BorderSide(color: Colors.white, width: 2),
+              padding: const EdgeInsets.all(15),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(30)),
+            ),
+            child: const Text(
+              'CREATE AN ACCOUNT',
               style: TextStyle(
                 color: Colors.white,
-                fontSize: 18.0,
+                letterSpacing: 1.5,
+                fontSize: 16.0,
                 fontWeight: FontWeight.bold,
+                fontFamily: 'OpenSans',
               ),
             ),
-          ],
+          ),
         ),
-      ),
+      ],
     );
   }
 
@@ -531,7 +633,7 @@ class _LoginPageState extends State<LoginPage> {
                       _buildForgotPasswordBtn(),
                       _buildRememberMeCheckbox(),
                       _buildLoginBtn(),
-                      _buildSignInWithText(),
+                      _buildDividerWithLabel('OR SIGN IN WITH'),
                       _buildSocialBtnRow(),
                       _buildSignupBtn(),
                     ],

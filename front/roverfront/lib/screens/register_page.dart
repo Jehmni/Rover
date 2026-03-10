@@ -1,13 +1,37 @@
 // register_page.dart
-// Registration screen for 'user' and 'driver' roles.
-// Admin accounts are created via Supabase Dashboard only (Phase 1, Step 6).
+//
+// Collects name, email, password and optional phone.
+// Role is set by the WelcomePage card tap — never shown as a picker.
+// After registration, routes to OrgSetupPage to link the organisation.
+//
+// Constructor params:
+//   role     — 'admin' | 'driver' | 'user'  (from WelcomePage card)
+//   orgToken — UUID from deep link (pre-fills OrgSetupPage join field)
+//   orgName  — resolved org name (shown in banner if arriving via link)
 
 import 'package:flutter/material.dart';
 import '../constants.dart';
 import '../services/auth_service.dart';
+import '../widgets/auth_dialog.dart';
+import 'org_setup_page.dart';
 
 class RegisterPage extends StatefulWidget {
-  const RegisterPage({super.key});
+  const RegisterPage({
+    super.key,
+    this.role = 'user',
+    this.orgToken,
+    this.orgName,
+  });
+
+  /// Role pre-selected from WelcomePage. Never displayed to the user.
+  final String role;
+
+  /// Org token from a deep link (rover.app/join/TOKEN). Passed through
+  /// to OrgSetupPage so the join step is pre-filled.
+  final String? orgToken;
+
+  /// Resolved org name to display in the banner (may be null).
+  final String? orgName;
 
   @override
   State<RegisterPage> createState() => _RegisterPageState();
@@ -18,7 +42,6 @@ class _RegisterPageState extends State<RegisterPage> {
   final _passwordController = TextEditingController();
   final _nameController     = TextEditingController();
   final _phoneController    = TextEditingController();
-  String _selectedRole = 'user';
   bool _isLoading = false;
 
   @override
@@ -33,30 +56,47 @@ class _RegisterPageState extends State<RegisterPage> {
   Future<void> _handleRegister() async {
     setState(() => _isLoading = true);
     try {
-      await AuthService.register(
+      final needsConfirmation = await AuthService.register(
         email:    _emailController.text.trim(),
         password: _passwordController.text,
         fullName: _nameController.text.trim(),
-        role:     _selectedRole,
         phone:    _phoneController.text.trim().isEmpty
                       ? null
                       : _phoneController.text.trim(),
       );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Account created! Please sign in.'),
-          backgroundColor: Colors.green,
-        ),
-      );
-      Navigator.of(context).pop(); // back to LoginPage
+
+      if (needsConfirmation) {
+        // Email confirmation required.
+        // After confirming, user signs in and is routed to OrgSetupPage.
+        showInfoDialog(
+          context,
+          title: 'Check Your Email',
+          message:
+              'Account created! We sent a confirmation link to '
+              '${_emailController.text.trim()}.\n\n'
+              'Click the link in that email, then sign in here. '
+              "Don't forget to check your spam folder.\n\n"
+              'You will be asked to link your organisation after signing in.',
+          buttonLabel: 'OK',
+        );
+      } else {
+        // Session active — route straight to OrgSetupPage.
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (_) => OrgSetupPage(
+              initialRole: widget.role,
+              orgToken:    widget.orgToken,
+              orgName:     widget.orgName,
+            ),
+          ),
+        );
+      }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(e.toString().replaceFirst('Exception: ', '')),
-            backgroundColor: Colors.red,
-          ),
+        showErrorDialog(
+          context,
+          e.toString().replaceFirst('Exception: ', ''),
         );
       }
     } finally {
@@ -132,6 +172,49 @@ class _RegisterPageState extends State<RegisterPage> {
                   fontWeight: FontWeight.bold,
                 ),
               ),
+              const SizedBox(height: 8),
+
+              // ── Org banner (deep-link context) ──────────────────────
+              if (widget.orgToken != null)
+                Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: Colors.white24,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.link,
+                          color: Colors.white70, size: 14),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          widget.orgName != null
+                              ? 'Joining: ${widget.orgName}'
+                              : 'You will join an organisation on the next step.',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontFamily: 'OpenSans',
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                const Text(
+                  'You will link your organisation on the next step.',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontFamily: 'OpenSans',
+                    fontSize: 13,
+                  ),
+                ),
+
               const SizedBox(height: 30),
               _buildTextField(
                 controller: _nameController,
@@ -160,38 +243,6 @@ class _RegisterPageState extends State<RegisterPage> {
                 icon: Icons.phone,
                 keyboardType: TextInputType.phone,
               ),
-              // Role selection — 'admin' is intentionally absent
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('I am registering as', style: kLabelStyle),
-                  const SizedBox(height: 10),
-                  Container(
-                    decoration: kBoxDecorationStyle,
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<String>(
-                        value: _selectedRole,
-                        dropdownColor: const Color(0xFF478DE0),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontFamily: 'OpenSans',
-                          fontSize: 16,
-                        ),
-                        items: const [
-                          DropdownMenuItem(value: 'user',   child: Text('Attendee')),
-                          DropdownMenuItem(value: 'driver', child: Text('Bus Driver')),
-                        ],
-                        onChanged: (val) {
-                          if (val != null) setState(() => _selectedRole = val);
-                        },
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 30),
-                ],
-              ),
-              // Register button
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
@@ -204,7 +255,8 @@ class _RegisterPageState extends State<RegisterPage> {
                     ),
                   ),
                   child: _isLoading
-                      ? const CircularProgressIndicator(color: Color(0xFF527DAA))
+                      ? const CircularProgressIndicator(
+                          color: Color(0xFF527DAA))
                       : const Text(
                           'CREATE ACCOUNT',
                           style: TextStyle(
@@ -217,16 +269,47 @@ class _RegisterPageState extends State<RegisterPage> {
                         ),
                 ),
               ),
+              const SizedBox(height: 16),
+              Row(
+                children: const [
+                  Expanded(
+                      child: Divider(color: Colors.white54, thickness: 0.8)),
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 12),
+                    child: Text(
+                      'HAVE AN ACCOUNT?',
+                      style: TextStyle(
+                        color: Colors.white54,
+                        fontSize: 12,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                      child: Divider(color: Colors.white54, thickness: 0.8)),
+                ],
+              ),
               const SizedBox(height: 20),
-              // Back to login
-              GestureDetector(
-                onTap: () => Navigator.of(context).pop(),
-                child: const Text(
-                  'Already have an account? Sign In',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w400,
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Colors.white, width: 2),
+                    padding: const EdgeInsets.all(15),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                  ),
+                  child: const Text(
+                    'SIGN IN',
+                    style: TextStyle(
+                      color: Colors.white,
+                      letterSpacing: 1.5,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'OpenSans',
+                    ),
                   ),
                 ),
               ),

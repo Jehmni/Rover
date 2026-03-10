@@ -24,10 +24,12 @@ class EventService {
   // Joins admin profile for display name.
   // ─────────────────────────────────────────────────────────
   static Future<List<Map<String, dynamic>>> getEvents() async {
+    // No status filter here — RLS handles it:
+    //   regular users: sees active only (policy: status = 'active')
+    //   admins: sees all statuses (policy allows admin role)
     final data = await supabase
         .from('events')
-        .select('*, profiles!admin_id(full_name)')
-        .eq('status', 'active')
+        .select('*, admin:profiles!admin_id(full_name), driver:profiles!assigned_driver_id(full_name)')
         .order('event_date', ascending: true);
     return List<Map<String, dynamic>>.from(data);
   }
@@ -44,8 +46,7 @@ class EventService {
   }) async {
     var query = supabase
         .from('events')
-        .select()
-        .eq('status', 'active');
+        .select(); // RLS filters by status based on caller's role
 
     if (name != null && name.trim().isNotEmpty) {
       query = query.ilike('name', '%${name.trim()}%');
@@ -67,7 +68,7 @@ class EventService {
   static Future<Map<String, dynamic>> getEventDetails(int eventId) async {
     final data = await supabase
         .from('events')
-        .select('*, profiles!admin_id(full_name), profiles!assigned_driver_id(full_name, id)')
+        .select('*, admin:profiles!admin_id(full_name), driver:profiles!assigned_driver_id(full_name, id)')
         .eq('id', eventId)
         .single();
     return Map<String, dynamic>.from(data);
@@ -119,21 +120,33 @@ class EventService {
     String? name,
     String? description,
     String? eventType,
+    String? locationName,
     DateTime? eventDate,
   }) async {
     final updates = <String, dynamic>{};
     if (name != null && name.trim().isNotEmpty) updates['name'] = name.trim();
     if (description != null) updates['description'] = description.trim();
     if (eventType != null) updates['event_type'] = eventType.trim();
+    if (locationName != null) updates['location_name'] = locationName.trim();
     if (eventDate != null) {
-      if (eventDate.isBefore(DateTime.now())) {
-        throw Exception('Event date must be in the future.');
-      }
       updates['event_date'] = eventDate.toIso8601String();
     }
     if (updates.isEmpty) return;
 
     await supabase.from('events').update(updates).eq('id', eventId);
+  }
+
+  // ─────────────────────────────────────────────────────────
+  // GET ATTENDEES for an event (admin only).
+  // RLS subs_select_admin ensures only the org admin can call this.
+  // ─────────────────────────────────────────────────────────
+  static Future<List<Map<String, dynamic>>> getEventAttendees(
+      int eventId) async {
+    final data = await supabase
+        .from('event_subscriptions')
+        .select('user_id, profiles!user_id(full_name, phone)')
+        .eq('event_id', eventId);
+    return List<Map<String, dynamic>>.from(data);
   }
 
   // ─────────────────────────────────────────────────────────

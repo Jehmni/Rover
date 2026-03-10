@@ -103,7 +103,7 @@ class _EventDetailPageState extends State<EventDetailPage> {
       );
     }
 
-    final adminName = (_event!['profiles'] as Map?)?['full_name'] ?? 'Unknown';
+    final adminName = (_event!['admin'] as Map?)?['full_name'] ?? 'Unknown';
     final eventDate = _event!['event_date'] != null
         ? DateTime.tryParse(_event!['event_date'] as String)
         : null;

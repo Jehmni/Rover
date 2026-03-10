@@ -1,17 +1,20 @@
 // auth_service.dart
 //
-// Replaces ALL HTTP calls to:
-//   POST /api/users/register
-//   POST /api/drivers/register
-//   POST /api/admins/register   ← no longer a public endpoint
-//   POST /api/login
+// Handles Supabase Auth signup and login.
 //
-// Security fixes applied vs rover.py:
+// Registration flow (v2 — multi-tenant):
+//   1. signUp() creates the auth user and the trigger creates a
+//      minimal profile row (role='user', org_id=NULL).
+//   2. The Flutter app immediately calls OrgService.createOrganisationAndAdmin()
+//      or OrgService.joinWithCode() to set the org and role.
+//   3. If email confirmation is required, the user confirms their
+//      email and signs in; login() returns 'no_org' which routes
+//      them to OrgSetupPage to complete step 2.
+//
+// Security:
 //   - Passwords are NEVER stored or compared as plaintext.
-//     Supabase Auth handles bcrypt hashing internally.
-//   - Admin registration is NOT possible from the public app.
-//     Admins are created via Supabase Dashboard only.
-//   - Rate limiting on auth is handled by Supabase Auth automatically.
+//   - Role assignment happens server-side via SECURITY DEFINER RPCs.
+//   - Rate limiting is handled by Supabase Auth automatically.
 
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -20,24 +23,22 @@ import '../main.dart';
 class AuthService {
   // ─────────────────────────────────────────────────────────
   // REGISTER
-  // Accepts role 'user' or 'driver' only. The 'admin' role
-  // cannot be assigned from this method — see schema.sql for
-  // the manual INSERT comment.
+  //
+  // Creates the auth user. Does NOT set a role or org — that
+  // is done via OrgService after this call succeeds.
+  //
+  // Returns true  → email confirmation required; caller shows
+  //                 "check your email" UI and waits for login.
+  // Returns false → session is active; caller must immediately
+  //                 call OrgService.createOrganisationAndAdmin()
+  //                 or OrgService.joinWithCode().
   // ─────────────────────────────────────────────────────────
-  static Future<void> register({
+  static Future<bool> register({
     required String email,
     required String password,
     required String fullName,
-    required String role,
     String? phone,
   }) async {
-    // Client-side validation (Phase 6 rules)
-    if (role == 'admin') {
-      throw Exception('Admin accounts cannot be created from the app.');
-    }
-    if (role != 'user' && role != 'driver') {
-      throw Exception('Role must be "user" or "driver".');
-    }
     if (email.isEmpty || !RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(email)) {
       throw Exception('Please enter a valid email address.');
     }
@@ -56,40 +57,57 @@ class AuthService {
       throw Exception('Phone number may only contain digits, spaces, + and -.');
     }
 
-    // Create auth user — Supabase hashes the password; we never see it
-    final response = await supabase.auth.signUp(
-      email: email.trim(),
-      password: password,
-    );
+    // ── Create auth user ───────────────────────────────────
+    // Pass full_name in metadata so the handle_new_user trigger
+    // can populate the profile row before the RPC is called.
+    late AuthResponse response;
+    try {
+      response = await supabase.auth.signUp(
+        email: email.trim(),
+        password: password,
+        data: {'full_name': fullName.trim()},
+      );
+    } on AuthException catch (e) {
+      final msg = e.message.toLowerCase();
+      if (msg.contains('already registered') ||
+          msg.contains('already exists') ||
+          msg.contains('user already')) {
+        throw Exception(
+          'An account with this email already exists. Try signing in instead.',
+        );
+      }
+      throw Exception(e.message);
+    }
 
     if (response.user == null) {
       throw Exception('Registration failed. Please try again.');
     }
 
-    // Insert matching profile row (linked by UUID to auth.users)
-    await supabase.from('profiles').insert({
-      'id': response.user!.id,
-      'role': role,
-      'full_name': fullName.trim(),
-      if (phone != null && phone.isNotEmpty) 'phone': phone.trim(),
-    });
+    if (response.session == null) {
+      // Email confirmation required — profile trigger already ran.
+      // The user must confirm their email, sign in, and will be
+      // routed to OrgSetupPage (login() returns 'no_org').
+      return true;
+    }
+
+    // Session is active — trigger already created the profile row.
+    // The register_page will immediately route to OrgSetupPage.
+    return false;
   }
 
   // ─────────────────────────────────────────────────────────
   // LOGIN
-  // Works for all roles. Returns the role string so the caller
-  // can navigate to the correct home screen.
   //
-  // Fix vs rover.py Bug 2: BusDriver had no username/password
-  // columns and caused an InvalidRequestError on every login.
-  // Here we query profiles (which has the role), not the
-  // non-existent BusDriver.username field.
+  // Returns:
+  //   'admin'    → navigate to AdminHomePage
+  //   'driver'   → navigate to DriverHomePage
+  //   'user'     → navigate to UserHomePage
+  //   'no_org'   → navigate to OrgSetupPage (org not yet linked)
   // ─────────────────────────────────────────────────────────
   static Future<String> login({
     required String email,
     required String password,
   }) async {
-    // Client-side validation
     if (email.isEmpty || !RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(email)) {
       throw Exception('Please enter a valid email address.');
     }
@@ -97,26 +115,106 @@ class AuthService {
       throw Exception('Password must be at least 8 characters.');
     }
 
-    final response = await supabase.auth.signInWithPassword(
-      email: email.trim(),
-      password: password,
-    );
-
-    if (response.user == null) {
-      throw Exception('Invalid credentials. Please try again.');
+    late AuthResponse response;
+    try {
+      response = await supabase.auth.signInWithPassword(
+        email: email.trim(),
+        password: password,
+      );
+    } on AuthException catch (e) {
+      final msg = e.message.toLowerCase();
+      if (msg.contains('invalid login credentials') ||
+          msg.contains('invalid email or password') ||
+          msg.contains('wrong password') ||
+          msg.contains('no user found')) {
+        throw Exception(
+          'Incorrect email or password. Please check your credentials and try again.',
+        );
+      }
+      if (msg.contains('email not confirmed')) {
+        throw Exception(
+          'Your email address has not been confirmed yet. '
+          'Please check your inbox (and spam folder) for the confirmation link.',
+        );
+      }
+      if (msg.contains('too many requests') || msg.contains('rate limit')) {
+        throw Exception(
+          'Too many sign-in attempts. Please wait a few minutes and try again.',
+        );
+      }
+      throw Exception(e.message);
     }
 
-    // Fetch role from profiles table to determine navigation target
-    final profile = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', response.user!.id)
-        .single();
+    if (response.user == null) {
+      throw Exception(
+        'Sign-in failed. Please check your credentials and try again.',
+      );
+    }
 
-    // Register FCM token after successful login (non-fatal if it fails)
-    await _registerFcmToken();
+    try {
+      final profile = await supabase
+          .from('profiles')
+          .select('role, org_id')
+          .eq('id', response.user!.id)
+          .single();
 
-    return profile['role'] as String; // 'user' | 'driver' | 'admin'
+      // ── Org not yet linked ─────────────────────────────
+      // This happens after email confirmation, or if org setup
+      // was interrupted. OrgSetupPage will complete the setup.
+      if (profile['org_id'] == null) {
+        return 'no_org';
+      }
+
+      await _registerFcmToken();
+      return profile['role'] as String;
+    } on PostgrestException catch (e) {
+      if (e.code == 'PGRST116') {
+        return await _healMissingProfile(response.user!);
+      }
+      await supabase.auth.signOut();
+      throw Exception(
+        'Your account was found but we could not load your profile. '
+        'Please try again.',
+      );
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────
+  // HEAL MISSING PROFILE
+  // Creates a minimal profile row if the trigger missed it.
+  // org_id is still null — caller routes to OrgSetupPage.
+  // ─────────────────────────────────────────────────────────
+  static Future<String> _healMissingProfile(User user) async {
+    final meta = user.userMetadata ?? {};
+    final fullName = (meta['full_name'] as String?) ?? '';
+
+    try {
+      await supabase.from('profiles').insert({
+        'id': user.id,
+        'role': 'user',
+        'full_name': fullName,
+        // org_id intentionally null — OrgSetupPage will set it
+      });
+      return 'no_org';
+    } on PostgrestException catch (insertErr) {
+      // Row may have appeared concurrently — try reading it
+      try {
+        final profile = await supabase
+            .from('profiles')
+            .select('role, org_id')
+            .eq('id', user.id)
+            .single();
+        if (profile['org_id'] == null) return 'no_org';
+        await _registerFcmToken();
+        return profile['role'] as String;
+      } catch (_) {}
+
+      await supabase.auth.signOut();
+      throw Exception(
+        'Your account was found but profile setup failed '
+        '(${insertErr.message}). Please contact support.',
+      );
+    }
   }
 
   // ─────────────────────────────────────────────────────────
@@ -132,12 +230,7 @@ class AuthService {
   static User? get currentUser => supabase.auth.currentUser;
 
   // ─────────────────────────────────────────────────────────
-  // FCM TOKEN REGISTRATION
-  // Stores the device push token on the profile so Edge Functions
-  // can send targeted notifications. Non-fatal — if Firebase is
-  // not configured, this silently skips.
-  // Requires: ALTER TABLE public.profiles ADD COLUMN fcm_token text;
-  // (already included in schema.sql)
+  // FCM TOKEN REGISTRATION (non-fatal)
   // ─────────────────────────────────────────────────────────
   static Future<void> _registerFcmToken() async {
     try {
@@ -149,7 +242,7 @@ class AuthService {
             .eq('id', currentUser!.id);
       }
     } catch (_) {
-      // Firebase may not be configured in all environments — skip silently
+      // Firebase may not be configured — skip silently
     }
   }
 }
