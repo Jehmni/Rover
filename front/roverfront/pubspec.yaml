@@ -20,13 +20,13 @@ dependencies:
   # After adding these, run: flutterfire configure
   # This generates lib/firebase_options.dart and places
   # google-services.json (Android) / GoogleService-Info.plist (iOS).
-  firebase_core: ^3.0.0
-  firebase_messaging: ^15.0.0
+  firebase_core: ^4.5.0
+  firebase_messaging: ^16.1.2
 
   # ── Device GPS for pickup location ──
   # Android: add ACCESS_FINE_LOCATION to AndroidManifest.xml
   # iOS:     add NSLocationWhenInUseUsageDescription to Info.plist
-  geolocator: ^13.0.0
+  geolocator: ^14.0.2
 
   # ── Optional: Map display on driver screen ──
   # Requires a Google Maps API key.
@@ -34,10 +34,22 @@ dependencies:
   # iOS:     call GMSServices.provideAPIKey in AppDelegate
   # google_maps_flutter: ^2.9.0
 
+  # ── Onboarding: deep links, QR display, share sheet, QR scan ──
+  # app_links: parse rover.app/join/TOKEN deep links
+  app_links: ^6.3.4
+  # qr_flutter: render QR code on admin Share tab
+  qr_flutter: ^4.1.0
+  # share_plus: native share sheet for invite link
+  share_plus: ^10.1.4
+  # mobile_scanner: scan QR codes on JoinOrg tab
+  # Android: requires minSdkVersion 21 in android/app/build.gradle
+  # iOS: add NSCameraUsageDescription to Info.plist
+  mobile_scanner: ^6.0.8
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^3.0.0
+  flutter_lints: ^6.0.0
 
 flutter:
   uses-material-design: true
