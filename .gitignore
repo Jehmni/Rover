@@ -2,6 +2,15 @@ rov/
 frontend functionalities.txt
 Additional functionality.txt
 
+# Flutter SDK (local installation — not part of the app)
+flutter/
+
+# Firebase config — contains API keys, manage per-environment separately
+front/roverfront/android/app/google-services.json
+front/roverfront/ios/Runner/GoogleService-Info.plist
+front/roverfront/lib/firebase_options.dart
+front/roverfront/firebase.json
+
 # Environment secrets — never commit these
 .env
 .env.local
