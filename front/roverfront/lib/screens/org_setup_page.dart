@@ -427,6 +427,21 @@ class _JoinOrgTabState extends State<_JoinOrgTab> {
       }
     }
 
+    // Validate the resolved token is UUID-shaped before hitting the RPC.
+    // This gives a clear message for random QR codes or malformed links.
+    final uuidPattern = RegExp(
+      r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+      caseSensitive: false,
+    );
+    if (!uuidPattern.hasMatch(token)) {
+      showErrorDialog(
+        context,
+        "That doesn't look like a Rover invite code. "
+        'Ask your administrator to share the link again.',
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
     try {
       final role = await OrgService.joinOrganisation(
@@ -682,6 +697,7 @@ class _OrgSearchDialogState extends State<_OrgSearchDialog> {
   List<Map<String, dynamic>> _results = [];
   bool _isSearching  = false;
   bool _isRequesting = false;
+  bool _searchError  = false;
   String? _sentToOrgId;
 
   @override
@@ -692,15 +708,15 @@ class _OrgSearchDialogState extends State<_OrgSearchDialog> {
 
   Future<void> _search(String q) async {
     if (q.trim().isEmpty) {
-      setState(() => _results = []);
+      setState(() { _results = []; _searchError = false; });
       return;
     }
-    setState(() => _isSearching = true);
+    setState(() { _isSearching = true; _searchError = false; });
     try {
       final results = await OrgService.searchOrgs(q);
       if (mounted) setState(() => _results = results);
     } catch (_) {
-      if (mounted) setState(() => _results = []);
+      if (mounted) setState(() { _results = []; _searchError = true; });
     } finally {
       if (mounted) setState(() => _isSearching = false);
     }
@@ -745,6 +761,11 @@ class _OrgSearchDialogState extends State<_OrgSearchDialog> {
             const SizedBox(height: 12),
             if (_isSearching)
               const Center(child: CircularProgressIndicator())
+            else if (_searchError)
+              const Text(
+                'Search failed — check your connection and try again.',
+                style: TextStyle(color: Colors.red, fontSize: 13),
+              )
             else if (_results.isEmpty && _searchCtrl.text.isNotEmpty)
               const Text('No results. Try a different name or city.',
                   style: TextStyle(color: Colors.grey, fontSize: 13))
