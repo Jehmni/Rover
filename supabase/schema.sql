@@ -109,6 +109,18 @@ CREATE TABLE IF NOT EXISTS public.pickup_requests (
 );
 
 -- ─────────────────────────────────────────────────────────────
+-- IDEMPOTENT CONSTRAINT ADDITIONS
+-- Enforce event_date is not in the past at the DB layer.
+-- A 1-hour grace window tolerates minor clock skew between client
+-- and server when saving events that start "right now".
+-- ─────────────────────────────────────────────────────────────
+ALTER TABLE public.events
+  DROP CONSTRAINT IF EXISTS events_date_not_past;
+ALTER TABLE public.events
+  ADD CONSTRAINT events_date_not_past
+    CHECK (event_date > now() - interval '1 hour');
+
+-- ─────────────────────────────────────────────────────────────
 -- IDEMPOTENT COLUMN ADDITIONS
 -- Safe to re-run: no-ops if columns already exist.
 -- Required for databases with pre-existing tables from older
