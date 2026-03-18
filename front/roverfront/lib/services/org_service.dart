@@ -245,13 +245,15 @@ class OrgService {
     try {
       final q = query.trim();
       if (q.isEmpty) return [];
-      final data = await supabase
-          .from('organisations')
-          .select('id, name, city, org_type')
-          .eq('searchable', true)
-          .or('name.ilike.%$q%,city.ilike.%$q%')
-          .limit(20);
-      return List<Map<String, dynamic>>.from(data);
+      // Uses a SECURITY DEFINER RPC so the query is parameterised
+      // server-side — no string interpolation in the filter.
+      final data = await supabase.rpc(
+        'search_organisations',
+        params: {'p_query': q},
+      ) as List<dynamic>;
+      return List<Map<String, dynamic>>.from(
+        data.map((e) => Map<String, dynamic>.from(e as Map)),
+      );
     } catch (e) {
       throw Exception(_clean(e));
     }

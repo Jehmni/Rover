@@ -176,16 +176,54 @@ class _EventDetailPageState extends State<EventDetailPage> {
             StreamBuilder<Map<String, dynamic>?>(
               stream: PickupService.listenToMyPickup(widget.eventId),
               builder: (context, snapshot) {
+                // Connecting — show a subtle progress bar, not a blocking spinner
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const SizedBox(
+                    height: 4,
+                    child: LinearProgressIndicator(),
+                  );
+                }
+                // Stream error (e.g. Realtime channel dropped)
+                if (snapshot.hasError) {
+                  return const Card(
+                    color: Color(0xFFFFF3E0),
+                    child: ListTile(
+                      leading: Icon(Icons.warning_amber, color: Colors.orange),
+                      title: Text('Could not load pickup status.'),
+                      subtitle: Text('Check your connection and try again.'),
+                    ),
+                  );
+                }
                 final pickup = snapshot.data;
+                // No pickup request yet — nothing to show
                 if (pickup == null) return const SizedBox.shrink();
+
+                // Pickup exists but admin hasn't assigned a driver yet
+                final hasDriver = _event!['assigned_driver_id'] != null;
+                if (!hasDriver) {
+                  return const Card(
+                    color: Color(0xFFE8F4FD),
+                    child: ListTile(
+                      leading: Icon(Icons.hourglass_empty,
+                          color: Color(0xFF478DE0)),
+                      title: Text('Pickup request received'),
+                      subtitle: Text(
+                          'Waiting for a driver to be assigned to this event.'),
+                    ),
+                  );
+                }
+
+                // Normal ETA card — driver assigned and route may be scheduled
                 return Card(
                   color: const Color(0xFFE8F4FD),
                   child: ListTile(
-                    leading: const Icon(Icons.directions_bus, color: Color(0xFF478DE0)),
+                    leading: const Icon(Icons.directions_bus,
+                        color: Color(0xFF478DE0)),
                     title: Text('Pickup #${pickup['pickup_order'] ?? '-'}'),
                     subtitle: Text(
                       pickup['eta_minutes'] != null
-                          ? 'ETA: ${pickup['eta_minutes']} min  •  Status: ${pickup['status']}'
+                          ? 'ETA: ${pickup['eta_minutes']} min'
+                            '  •  Status: ${pickup['status']}'
                           : 'Status: ${pickup['status']}',
                     ),
                   ),
