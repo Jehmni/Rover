@@ -98,15 +98,14 @@ class EventService {
       throw Exception('Longitude must be between -180 and 180.');
     }
 
-    final adminId = supabase.auth.currentUser?.id;
-
     await supabase.from('events').insert({
       'name': name.trim(),
       'description': description?.trim(),
       'event_date': eventDate.toIso8601String(),
       'event_type': eventType?.trim(),
       'location_name': locationName?.trim(),
-      'admin_id': adminId,
+      // admin_id and org_id are set by the BEFORE INSERT trigger (set_event_defaults)
+      // — do not pass them from the client.
       if (latitude != null && longitude != null)
         'location': 'POINT($longitude $latitude)',
     });

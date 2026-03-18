@@ -191,9 +191,19 @@ class _AuthGateState extends State<AuthGate> {
       Navigator.of(context).push(MaterialPageRoute(
         builder: (_) => WelcomePage(orgToken: token),
       ));
+    } else {
+      // Already signed in — inform user they'd need to sign out to join
+      // a different organisation via this link.
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'You\'re already in an organisation. Sign out to join a different one.',
+          ),
+          duration: Duration(seconds: 4),
+          backgroundColor: Color(0xFF398AE5),
+        ),
+      );
     }
-    // If already signed in with an org, the user is already on their home
-    // screen — nothing to do (they can share the link with others).
   }
 
   // ── Session check ──────────────────────────────────────────
@@ -270,7 +280,7 @@ class LoginPage extends StatefulWidget {
   final String title;
 
   @override
-  _LoginPageState createState() => _LoginPageState();
+  State<LoginPage> createState() => _LoginPageState();
 }
 
 class _LoginPageState extends State<LoginPage> {
@@ -304,7 +314,13 @@ class _LoginPageState extends State<LoginPage> {
       final role = await AuthService.login(email: email, password: password);
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => destinationForRole(role)),
+        MaterialPageRoute(
+          builder: (_) => destinationForRole(
+            role,
+            orgToken: PendingLink.orgToken,
+            orgName:  PendingLink.orgName,
+          ),
+        ),
       );
     } catch (e) {
       if (mounted) {
