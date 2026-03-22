@@ -5,6 +5,7 @@
 // join-by-code and invite generation are all atomic and
 // cannot be forged from the client.
 
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../main.dart';
 
 class OrgService {
@@ -278,16 +279,43 @@ class OrgService {
 
   // ─────────────────────────────────────────────────────────
   // GET PENDING JOIN REQUESTS FOR MY ORG (admin only)
-  // Returns requests with the requester's profile info.
+  //
+  // Fix M-12: org_join_requests.user_id has a FK to auth.users, not
+  // profiles, so PostgREST cannot resolve 'profiles!user_id' from
+  // org_join_requests directly. We use a two-step fetch instead:
+  //   1. Fetch pending request rows (RLS scopes to admin's org).
+  //   2. Batch-fetch profiles by id IN (user_ids).
+  // This correctly uses profiles.id = auth.users.id = user_id.
   // ─────────────────────────────────────────────────────────
   static Future<List<Map<String, dynamic>>> getPendingRequests() async {
     try {
-      final data = await supabase
+      final requests = await supabase
           .from('org_join_requests')
-          .select('id, user_id, created_at, profiles!user_id(full_name, phone)')
+          .select('id, user_id, created_at')
           .eq('status', 'pending')
           .order('created_at', ascending: true);
-      return List<Map<String, dynamic>>.from(data);
+
+      final list = List<Map<String, dynamic>>.from(requests);
+      if (list.isEmpty) return [];
+
+      // Batch-fetch profiles whose id matches the requesting user_ids
+      final userIds = list.map((r) => r['user_id'] as String).toList();
+      final profiles = await supabase
+          .from('profiles')
+          .select('id, full_name, phone')
+          .inFilter('id', userIds);
+
+      final profileMap = <String, Map<String, dynamic>>{
+        for (final p in List<Map<String, dynamic>>.from(profiles))
+          p['id'] as String: p,
+      };
+
+      // Merge profile data into each request row under the 'profiles' key
+      // so existing UI code that reads r['profiles']['full_name'] still works.
+      return list.map((r) {
+        final profile = profileMap[r['user_id'] as String];
+        return {...r, 'profiles': profile};
+      }).toList();
     } catch (e) {
       throw Exception(_clean(e));
     }
@@ -321,6 +349,32 @@ class OrgService {
     } catch (e) {
       throw Exception(_clean(e));
     }
+  }
+
+  // ─────────────────────────────────────────────────────────
+  // REALTIME — pending join requests for admin's org (M-9)
+  // Returns a RealtimeChannel that fires onChange on any
+  // INSERT / UPDATE / DELETE to org_join_requests for orgId.
+  // Caller must call .unsubscribe() on dispose.
+  // ─────────────────────────────────────────────────────────
+  static RealtimeChannel subscribeToPendingRequests({
+    required String orgId,
+    required void Function() onChange,
+  }) {
+    return supabase
+        .channel('pending_requests_$orgId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'org_join_requests',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'org_id',
+            value: orgId,
+          ),
+          callback: (_) => onChange(),
+        )
+        .subscribe();
   }
 
   // ── Private ───────────────────────────────────────────────

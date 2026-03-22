@@ -24,6 +24,7 @@ import '../services/org_service.dart';
 import '../widgets/auth_dialog.dart';
 import 'admin_home_page.dart';
 import 'driver_home_page.dart';
+import 'user_guide_page.dart';
 import 'user_home_page.dart';
 
 class OrgSetupPage extends StatefulWidget {
@@ -108,6 +109,16 @@ class _OrgSetupPageState extends State<OrgSetupPage>
                             fontFamily: 'OpenSans',
                             fontSize: 22,
                             fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.help_outline,
+                            color: Colors.white70, size: 20),
+                        tooltip: 'Help',
+                        onPressed: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const UserGuidePage(),
                           ),
                         ),
                       ),

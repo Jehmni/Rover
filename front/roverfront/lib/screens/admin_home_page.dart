@@ -9,10 +9,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/auth_service.dart';
 import '../services/event_service.dart';
 import '../services/org_service.dart';
 import '../widgets/auth_dialog.dart';
+import 'user_guide_page.dart';
 
 class AdminHomePage extends StatefulWidget {
   const AdminHomePage({super.key});
@@ -69,6 +71,15 @@ class _AdminHomePageState extends State<AdminHomePage>
         backgroundColor: const Color(0xFF478DE0),
         foregroundColor: Colors.white,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.help_outline),
+            tooltip: 'Help',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => const UserGuidePage(role: 'admin'),
+              ),
+            ),
+          ),
           IconButton(icon: const Icon(Icons.logout), onPressed: _logout),
         ],
         bottom: TabBar(
@@ -197,7 +208,10 @@ class _EventsTabState extends State<_EventsTab> {
                           context: ctx,
                           initialDate: pickedDate ??
                               DateTime.now().add(const Duration(days: 1)),
-                          firstDate: DateTime.now().subtract(const Duration(days: 1)),
+                          // Fix M-8: DB CHECK constraint is event_date > now() - 1 hour.
+                          // Align the picker's firstDate to the same 55-minute grace window
+                          // so the picker never allows a date the DB will reject.
+                          firstDate: DateTime.now().subtract(const Duration(minutes: 55)),
                           lastDate: DateTime.now().add(const Duration(days: 365 * 2)),
                         );
                         if (d == null) return;
@@ -741,12 +755,21 @@ class _ShareTabState extends State<_ShareTab> {
   bool _isLoading   = true;
   bool _isResetting = false;
 
+  // M-9: realtime channel for incoming join requests
+  RealtimeChannel? _requestsChannel;
+
   static const _baseUrl = 'https://rover.app/join/';
 
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _requestsChannel?.unsubscribe();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -757,10 +780,20 @@ class _ShareTabState extends State<_ShareTab> {
         OrgService.getPendingRequests(),
       ]);
       if (mounted) {
+        final org = results[0] as Map<String, dynamic>?;
         setState(() {
-          _org             = results[0] as Map<String, dynamic>?;
+          _org             = org;
           _pendingRequests = results[1] as List<Map<String, dynamic>>;
         });
+
+        // M-9: subscribe once; re-subscribe only if org changed
+        final orgId = org?['id'] as String?;
+        if (orgId != null && _requestsChannel == null) {
+          _requestsChannel = OrgService.subscribeToPendingRequests(
+            orgId: orgId,
+            onChange: _reloadPendingRequests,
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -772,6 +805,13 @@ class _ShareTabState extends State<_ShareTab> {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  Future<void> _reloadPendingRequests() async {
+    try {
+      final requests = await OrgService.getPendingRequests();
+      if (mounted) setState(() => _pendingRequests = requests);
+    } catch (_) {}
   }
 
   String get _inviteUrl =>
@@ -859,7 +899,28 @@ class _ShareTabState extends State<_ShareTab> {
     }
   }
 
+  // Fix L-9: added confirmation dialog to match the approve flow.
   Future<void> _rejectRequest(int requestId, String name) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Reject Request?'),
+        content: Text('Reject the join request from $name?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Reject',
+                style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
     try {
       await OrgService.rejectRequest(requestId);
       await _load();

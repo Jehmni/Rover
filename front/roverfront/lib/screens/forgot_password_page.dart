@@ -33,11 +33,18 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
 
     setState(() => _isLoading = true);
     try {
-      // redirectTo must be added to Supabase:
-      //   Authentication → URL Configuration → Redirect URLs
-      // Add: http://localhost:* for local dev, or your production URL.
-      final redirectTo = '${Uri.base.origin}/';
-      await supabase.auth.resetPasswordForEmail(email, redirectTo: redirectTo);
+      // Fix M-11: Uri.base.origin is meaningless on mobile (evaluates to
+      // an empty string or 'null'). On native platforms, Supabase sends the
+      // reset email using the Redirect URL configured in the Supabase
+      // Dashboard (Authentication → URL Configuration → Redirect URLs).
+      // We omit redirectTo here so that Supabase always uses its configured
+      // value, which works correctly for both web and mobile deep links.
+      //
+      // To enable mobile deep links for password reset:
+      //   Dashboard → Redirect URLs → add your scheme, e.g.:
+      //     io.rover.app://reset-password
+      //   Then handle that scheme in AuthGate's onAuthStateChange listener.
+      await supabase.auth.resetPasswordForEmail(email);
       if (mounted) setState(() => _emailSent = true);
     } on AuthException catch (e) {
       if (mounted) showErrorDialog(context, e.message);

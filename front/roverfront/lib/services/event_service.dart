@@ -122,6 +122,12 @@ class EventService {
     String? locationName,
     DateTime? eventDate,
   }) async {
+    // Fix M-9: validate date on edit, matching the DB CHECK constraint
+    // (event_date > now() - interval '1 hour')
+    if (eventDate != null &&
+        eventDate.isBefore(DateTime.now().subtract(const Duration(minutes: 55)))) {
+      throw Exception('Event date must not be in the past.');
+    }
     final updates = <String, dynamic>{};
     if (name != null && name.trim().isNotEmpty) updates['name'] = name.trim();
     if (description != null) updates['description'] = description.trim();

@@ -165,7 +165,7 @@ class AuthService {
         return 'no_org';
       }
 
-      await _registerFcmToken();
+      await registerFcmToken();
       return profile['role'] as String;
     } on PostgrestException catch (e) {
       if (e.code == 'PGRST116') {
@@ -205,7 +205,7 @@ class AuthService {
             .eq('id', user.id)
             .single();
         if (profile['org_id'] == null) return 'no_org';
-        await _registerFcmToken();
+        await registerFcmToken();
         return profile['role'] as String;
       } catch (_) {}
 
@@ -231,8 +231,13 @@ class AuthService {
 
   // ─────────────────────────────────────────────────────────
   // FCM TOKEN REGISTRATION (non-fatal)
+  //
+  // Fix M-6: exposed as public so OrgSetupPage can call it after
+  // a successful org join. Previously only called on login, meaning
+  // newly registered users who joined an org immediately (no email
+  // confirmation required) never had their FCM token saved.
   // ─────────────────────────────────────────────────────────
-  static Future<void> _registerFcmToken() async {
+  static Future<void> registerFcmToken() async {
     try {
       final token = await FirebaseMessaging.instance.getToken();
       if (token != null && currentUser != null) {

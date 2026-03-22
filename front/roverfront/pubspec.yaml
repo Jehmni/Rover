@@ -28,11 +28,12 @@ dependencies:
   # iOS:     add NSLocationWhenInUseUsageDescription to Info.plist
   geolocator: ^14.0.2
 
-  # ── Optional: Map display on driver screen ──
-  # Requires a Google Maps API key.
-  # Android: add to AndroidManifest.xml <meta-data android:name="com.google.android.geo.API_KEY" ...>
-  # iOS:     call GMSServices.provideAPIKey in AppDelegate
-  # google_maps_flutter: ^2.9.0
+  # ── Map display on driver screen (OpenStreetMap — no API key needed) ──
+  flutter_map: ^7.0.2
+  latlong2: ^0.9.1
+
+  # ── Persist deep-link token across app restarts ──
+  shared_preferences: ^2.3.2
 
   # ── Onboarding: deep links, QR display, share sheet, QR scan ──
   # app_links: parse rover.app/join/TOKEN deep links

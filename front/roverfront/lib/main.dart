@@ -1,20 +1,19 @@
 // main.dart
 //
-// Changes vs original:
-//   1. main() initialises Supabase and Firebase before runApp()
-//   2. MyApp renamed to RoverApp; home is now AuthGate (session check)
-//   3. LoginPage UI is UNCHANGED — only the button callbacks are wired:
-//        - Login button  → AuthService.login() → role-based navigation
-//        - Sign Up text  → Navigator.push(WelcomePage)   ← new
-//   4. Global `supabase` accessor added for use throughout the app
-//   5. PendingLink stores deep-link token across navigation transitions
-//   6. AuthGate intercepts rover.app/join/TOKEN deep links (app_links)
+// Fixes applied in this revision:
+//   M-1 — Cold-start deep link race: _initDeepLinks() is awaited before
+//          _checkSession() so the token is always stored before routing.
+//   M-2 — Deep link token persisted to SharedPreferences so it survives
+//          app kills (e.g. email confirmation flow).
+//   L-4 — Social login buttons removed (were permanently "coming soon").
+//   L-5 — "Remember me" checkbox removed (was a rendered no-op).
 
 import 'dart:async';
 
 import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_core/firebase_core.dart';
 
@@ -27,6 +26,7 @@ import 'screens/org_setup_page.dart';
 import 'screens/user_home_page.dart';
 import 'screens/driver_home_page.dart';
 import 'screens/admin_home_page.dart';
+import 'screens/user_guide_page.dart';
 import 'widgets/auth_dialog.dart';
 
 // ─────────────────────────────────────────────────────────────
@@ -34,17 +34,38 @@ import 'widgets/auth_dialog.dart';
 // ─────────────────────────────────────────────────────────────
 final supabase = Supabase.instance.client;
 
+// SharedPreferences key for the persisted deep-link org token
+const _kPendingTokenKey = 'pending_org_token';
+
 // ─────────────────────────────────────────────────────────────
-// PendingLink — stores org token from a deep link until it is
-// consumed by WelcomePage or OrgSetupPage.
+// PendingLink — stores org token from a deep link until consumed.
+// Token is also persisted to SharedPreferences so it survives
+// an app kill between registration and email confirmation.
 // ─────────────────────────────────────────────────────────────
 class PendingLink {
   static String? orgToken;
   static String? orgName;
 
-  static void clear() {
+  /// Save token in memory AND to disk.
+  static Future<void> setToken(String token) async {
+    orgToken = token;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kPendingTokenKey, token);
+  }
+
+  /// Load token from disk into memory (called at startup before routing).
+  static Future<void> loadFromDisk() async {
+    if (orgToken != null) return; // already in memory
+    final prefs = await SharedPreferences.getInstance();
+    orgToken = prefs.getString(_kPendingTokenKey);
+  }
+
+  /// Consume token — removes from memory and disk.
+  static Future<void> clear() async {
     orgToken = null;
     orgName  = null;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_kPendingTokenKey);
   }
 }
 
@@ -111,6 +132,9 @@ class RoverApp extends StatelessWidget {
 
 // ─────────────────────────────────────────────────────────────
 // AuthGate — checks session on startup and handles deep links.
+//
+// Fix M-1: _initDeepLinks() is now awaited before _checkSession()
+// so the cold-start token is always in PendingLink before routing.
 // ─────────────────────────────────────────────────────────────
 class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
@@ -139,8 +163,9 @@ class _AuthGateState extends State<AuthGate> {
         );
       }
     });
-    _initDeepLinks();
-    _checkSession();
+    // Fix M-1: await deep links first so the token is in place
+    // before _checkSession() makes routing decisions.
+    _initDeepLinks().then((_) => _checkSession());
   }
 
   @override
@@ -154,22 +179,25 @@ class _AuthGateState extends State<AuthGate> {
   Future<void> _initDeepLinks() async {
     final appLinks = AppLinks();
 
-    // Cold-start deep link (app launched via a rover.app/join/TOKEN tap)
+    // Fix M-2: load any token persisted from a previous session
+    await PendingLink.loadFromDisk();
+
+    // Cold-start deep link (app launched via rover.app/join/TOKEN tap)
     try {
       final initial = await appLinks.getInitialLink();
-      if (initial != null) _storeToken(initial);
+      if (initial != null) await _storeToken(initial);
     } catch (_) {}
 
     // Warm link (app already running, another link tapped)
-    _linkSub = appLinks.uriLinkStream.listen((uri) {
-      _storeToken(uri);
+    _linkSub = appLinks.uriLinkStream.listen((uri) async {
+      await _storeToken(uri);
       _handleLinkWhileRunning(uri);
     });
   }
 
-  void _storeToken(Uri uri) {
+  Future<void> _storeToken(Uri uri) async {
     final token = _extractToken(uri);
-    if (token != null) PendingLink.orgToken = token;
+    if (token != null) await PendingLink.setToken(token);
   }
 
   String? _extractToken(Uri uri) {
@@ -187,17 +215,14 @@ class _AuthGateState extends State<AuthGate> {
 
     final user = supabase.auth.currentUser;
     if (user == null) {
-      // Not signed in — show welcome with org pre-filled
       Navigator.of(context).push(MaterialPageRoute(
         builder: (_) => WelcomePage(orgToken: token),
       ));
     } else {
-      // Already signed in — inform user they'd need to sign out to join
-      // a different organisation via this link.
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'You\'re already in an organisation. Sign out to join a different one.',
+            "You're already in an organisation. Sign out to join a different one.",
           ),
           duration: Duration(seconds: 4),
           backgroundColor: Color(0xFF398AE5),
@@ -271,9 +296,9 @@ class _AuthGateState extends State<AuthGate> {
 }
 
 // ═════════════════════════════════════════════════════════════
-// LoginPage — UI unchanged from original.
-// Only changes: _handleLogin() wired to AuthService,
-// "CREATE AN ACCOUNT" button now navigates to WelcomePage.
+// LoginPage
+// Fixes L-4, L-5: social login buttons and "Remember me"
+// checkbox removed — both were non-functional no-ops.
 // ═════════════════════════════════════════════════════════════
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key, required this.title});
@@ -284,7 +309,6 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
-  bool _rememberMe = false;
   bool _isLoading  = false;
   final TextEditingController _emailController    = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
@@ -332,8 +356,6 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   void _showError(String message) => showErrorDialog(context, message);
-
-  // ── Original UI builders (unchanged) ──────────────────────
 
   Widget _buildEmailTF() {
     return Column(
@@ -403,27 +425,6 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  Widget _buildRememberMeCheckbox() {
-    return Row(
-      children: <Widget>[
-        Theme(
-          data: ThemeData(unselectedWidgetColor: Colors.white),
-          child: Checkbox(
-            value: _rememberMe,
-            checkColor: Colors.green,
-            activeColor: Colors.white,
-            onChanged: (value) {
-              setState(() => _rememberMe = value!);
-            },
-          ),
-        ),
-        const Flexible(
-          child: Text('Remember me', style: kLabelStyle),
-        ),
-      ],
-    );
-  }
-
   Widget _buildLoginBtn() {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 25.0),
@@ -452,116 +453,27 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  Widget _buildDividerWithLabel(String label) {
-    return Row(
-      children: [
-        const Expanded(
-            child: Divider(color: Colors.white54, thickness: 0.8)),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Text(
-            label,
-            style: const TextStyle(
-              color: Colors.white54,
-              fontSize: 12,
-              letterSpacing: 1.2,
-            ),
-          ),
-        ),
-        const Expanded(
-            child: Divider(color: Colors.white54, thickness: 0.8)),
-      ],
-    );
-  }
-
-  void _showComingSoon(String provider) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('$provider sign-in coming soon.'),
-        backgroundColor: Colors.blueGrey,
-        duration: const Duration(seconds: 2),
-      ),
-    );
-  }
-
-  Widget _buildSocialBtn({
-    required String label,
-    required void Function() onTap,
-    required AssetImage logo,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(
-        children: [
-          Opacity(
-            opacity: 0.55,
-            child: Container(
-              height: 60.0,
-              width: 60.0,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.white,
-                boxShadow: const [
-                  BoxShadow(
-                    color: Colors.black26,
-                    offset: Offset(0, 2),
-                    blurRadius: 6.0,
-                  ),
-                ],
-                image: DecorationImage(image: logo),
-              ),
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            label,
-            style: const TextStyle(
-              color: Colors.white70,
-              fontSize: 12,
-              fontFamily: 'OpenSans',
-            ),
-          ),
-          const Text(
-            'coming soon',
-            style: TextStyle(
-              color: Colors.white38,
-              fontSize: 10,
-              fontStyle: FontStyle.italic,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSocialBtnRow() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 24.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
-          _buildSocialBtn(
-            label: 'Facebook',
-            onTap: () => _showComingSoon('Facebook'),
-            logo: const AssetImage('assets/logos/facebook.jpg'),
-          ),
-          _buildSocialBtn(
-            label: 'Google',
-            onTap: () => _showComingSoon('Google'),
-            logo: const AssetImage('assets/logos/google.jpg'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // "CREATE AN ACCOUNT" now routes to WelcomePage so the user
-  // picks their role from the three-card screen first.
   Widget _buildSignupBtn() {
     return Column(
       children: [
         const SizedBox(height: 8),
-        _buildDividerWithLabel('NEW HERE?'),
+        Row(
+          children: const [
+            Expanded(child: Divider(color: Colors.white54, thickness: 0.8)),
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 12),
+              child: Text(
+                'NEW HERE?',
+                style: TextStyle(
+                  color: Colors.white54,
+                  fontSize: 12,
+                  letterSpacing: 1.2,
+                ),
+              ),
+            ),
+            Expanded(child: Divider(color: Colors.white54, thickness: 0.8)),
+          ],
+        ),
         const SizedBox(height: 20),
         SizedBox(
           width: double.infinity,
@@ -622,6 +534,21 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                 ),
               ),
+              Positioned(
+                top: 40,
+                right: 12,
+                child: SafeArea(
+                  child: IconButton(
+                    icon: const Icon(Icons.help_outline, color: Colors.white70),
+                    tooltip: 'Help',
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const UserGuidePage(),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
               SizedBox(
                 height: double.infinity,
                 child: SingleChildScrollView(
@@ -647,10 +574,7 @@ class _LoginPageState extends State<LoginPage> {
                       const SizedBox(height: 30.0),
                       _buildPasswordTF(),
                       _buildForgotPasswordBtn(),
-                      _buildRememberMeCheckbox(),
                       _buildLoginBtn(),
-                      _buildDividerWithLabel('OR SIGN IN WITH'),
-                      _buildSocialBtnRow(),
                       _buildSignupBtn(),
                     ],
                   ),

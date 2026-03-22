@@ -11,6 +11,7 @@
 
 import 'package:flutter/material.dart';
 import '../constants.dart';
+import '../main.dart' show PendingLink;
 import '../services/auth_service.dart';
 import '../widgets/auth_dialog.dart';
 import 'org_setup_page.dart';
@@ -56,6 +57,14 @@ class _RegisterPageState extends State<RegisterPage> {
   Future<void> _handleRegister() async {
     setState(() => _isLoading = true);
     try {
+      // Fix M-2: persist the org token NOW so it survives an app kill.
+      // If email confirmation is required the user may close the app,
+      // confirm their email, and relaunch — the token will be waiting.
+      if (widget.orgToken != null) {
+        await PendingLink.setToken(widget.orgToken!);
+        if (widget.orgName != null) PendingLink.orgName = widget.orgName;
+      }
+
       final needsConfirmation = await AuthService.register(
         email:    _emailController.text.trim(),
         password: _passwordController.text,
@@ -68,7 +77,9 @@ class _RegisterPageState extends State<RegisterPage> {
 
       if (needsConfirmation) {
         // Email confirmation required.
-        // After confirming, user signs in and is routed to OrgSetupPage.
+        // Token is now on disk — user can kill the app, confirm their
+        // email, and relaunch. On next cold start PendingLink.loadFromDisk()
+        // will restore the token and OrgSetupPage will be pre-filled.
         showInfoDialog(
           context,
           title: 'Check Your Email',

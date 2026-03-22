@@ -5,6 +5,7 @@
 import 'package:flutter/material.dart';
 import '../services/event_service.dart';
 import '../services/pickup_service.dart';
+import 'user_guide_page.dart';
 
 class EventDetailPage extends StatefulWidget {
   final int eventId;
@@ -16,9 +17,12 @@ class EventDetailPage extends StatefulWidget {
 
 class _EventDetailPageState extends State<EventDetailPage> {
   Map<String, dynamic>? _event;
-  bool _isSubscribed = false;
-  bool _isLoading = true;
-  bool _isActing = false;
+  bool _isSubscribed  = false;
+  bool _isLoading     = true;
+  bool _isActing      = false;
+  // Fix L-6: tracks whether this user has a pending/en_route pickup request
+  // so the "Request Pickup" button is replaced with a persistent indicator.
+  bool _hasPickup = false;
 
   @override
   void initState() {
@@ -32,10 +36,12 @@ class _EventDetailPageState extends State<EventDetailPage> {
       final results = await Future.wait([
         EventService.getEventDetails(widget.eventId),
         EventService.isSubscribed(widget.eventId),
+        PickupService.hasActivePickup(widget.eventId),
       ]);
       setState(() {
-        _event = results[0] as Map<String, dynamic>;
+        _event        = results[0] as Map<String, dynamic>;
         _isSubscribed = results[1] as bool;
+        _hasPickup    = results[2] as bool;
       });
     } catch (e) {
       _showError(e.toString().replaceFirst('Exception: ', ''));
@@ -66,6 +72,8 @@ class _EventDetailPageState extends State<EventDetailPage> {
     setState(() => _isActing = true);
     try {
       await PickupService.requestPickup(widget.eventId);
+      // Fix L-6: set persistent state so button becomes an indicator
+      if (mounted) setState(() => _hasPickup = true);
       _showSnack('Pickup requested! You will be notified when the driver is on the way.', Colors.green);
     } catch (e) {
       _showError(e.toString().replaceFirst('Exception: ', ''));
@@ -113,6 +121,17 @@ class _EventDetailPageState extends State<EventDetailPage> {
         title: Text(_event!['name'] as String? ?? 'Event Details'),
         backgroundColor: const Color(0xFF478DE0),
         foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.help_outline),
+            tooltip: 'Help',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => const UserGuidePage(role: 'user'),
+              ),
+            ),
+          ),
+        ],
       ),
       body: Padding(
         padding: const EdgeInsets.all(20),
@@ -249,20 +268,49 @@ class _EventDetailPageState extends State<EventDetailPage> {
                   ),
                 ),
                 const SizedBox(width: 12),
+                // Fix L-6: once a pickup is requested, replace the button
+                // with a persistent "Pickup Requested" indicator so the
+                // user always knows their current state.
                 Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: (_isActing || !_isSubscribed) ? null : _requestPickup,
-                    icon: const Icon(Icons.local_taxi),
-                    label: const Text('Request Pickup'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(30),
-                      ),
-                    ),
-                  ),
+                  child: _hasPickup
+                      ? Container(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          decoration: BoxDecoration(
+                            color: Colors.green[50],
+                            borderRadius: BorderRadius.circular(30),
+                            border: Border.all(color: Colors.green),
+                          ),
+                          child: const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.check_circle,
+                                  color: Colors.green, size: 18),
+                              SizedBox(width: 6),
+                              Text(
+                                'Pickup Requested',
+                                style: TextStyle(
+                                  color: Colors.green,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      : ElevatedButton.icon(
+                          onPressed:
+                              (_isActing || !_isSubscribed) ? null : _requestPickup,
+                          icon: const Icon(Icons.local_taxi),
+                          label: const Text('Request Pickup'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.green,
+                            foregroundColor: Colors.white,
+                            padding:
+                                const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(30),
+                            ),
+                          ),
+                        ),
                 ),
               ],
             ),
