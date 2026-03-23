@@ -12,9 +12,11 @@
 //   NEW — "View Map" FAB opens DriverMapPage with the live pickup list.
 
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../services/auth_service.dart';
 import '../services/event_service.dart';
 import '../services/pickup_service.dart';
+import '../theme/rover_theme.dart';
 import 'driver_map_page.dart';
 import 'user_guide_page.dart';
 
@@ -77,7 +79,9 @@ class _DriverHomePageState extends State<DriverHomePage> {
         _pickupOrder   = ordered;
         _profilesCache = profiles;
       });
-      _showSnack('Route optimised — ${ordered.length} pickup(s) scheduled.', Colors.green);
+      _showSnack(
+          'Route optimised — ${ordered.length} pickup(s) scheduled.',
+          RoverColors.primary);
     } catch (e) {
       _showError(e.toString().replaceFirst('Exception: ', ''));
     } finally {
@@ -88,7 +92,7 @@ class _DriverHomePageState extends State<DriverHomePage> {
   Future<void> _markEnRoute(int pickupId) async {
     try {
       await PickupService.markEnRoute(pickupId);
-      _showSnack('Status updated — en route.', Colors.blue);
+      _showSnack('Status updated — en route.', RoverColors.secondary);
     } catch (e) {
       _showError(e.toString().replaceFirst('Exception: ', ''));
     }
@@ -97,7 +101,7 @@ class _DriverHomePageState extends State<DriverHomePage> {
   Future<void> _markCompleted(int pickupId) async {
     try {
       await PickupService.markCompleted(pickupId);
-      _showSnack('Pickup marked as completed.', Colors.green);
+      _showSnack('Pickup marked as completed.', RoverColors.primary);
     } catch (e) {
       _showError(e.toString().replaceFirst('Exception: ', ''));
     }
@@ -126,291 +130,532 @@ class _DriverHomePageState extends State<DriverHomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Rover — Driver'),
-        backgroundColor: const Color(0xFF478DE0),
-        foregroundColor: Colors.white,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.help_outline),
-            tooltip: 'Help',
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => const UserGuidePage(role: 'driver'),
-              ),
-            ),
-          ),
-          IconButton(icon: const Icon(Icons.logout), onPressed: _logout),
-        ],
-      ),
-      // "View Map" FAB — only visible once a route has been started
+      backgroundColor: RoverColors.surface,
       floatingActionButton: _activeEventId != null
           ? FloatingActionButton.extended(
-              backgroundColor: const Color(0xFF478DE0),
+              backgroundColor: RoverColors.primary,
               foregroundColor: Colors.white,
               icon: const Icon(Icons.map),
-              label: const Text('View Map'),
+              label: Text('View Map',
+                  style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
               onPressed: () => Navigator.of(context).push(
                 MaterialPageRoute(
                   builder: (_) => DriverMapPage(
-                    eventId:   _activeEventId!,
-                    eventName: _activeEventName ?? 'Route',
+                    eventId:       _activeEventId!,
+                    eventName:     _activeEventName ?? 'Route',
                     profilesCache: _profilesCache,
                   ),
                 ),
               ),
             )
           : null,
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Column(
-              children: [
-                // ── Assigned events ──────────────────────────
-                if (_assignedEvents.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.all(24),
+      body: CustomScrollView(
+        slivers: [
+          // ── App bar ──────────────────────────────────────
+          SliverAppBar(
+            pinned: true,
+            backgroundColor: RoverColors.primary,
+            foregroundColor: Colors.white,
+            expandedHeight: 120,
+            flexibleSpace: FlexibleSpaceBar(
+              titlePadding: const EdgeInsets.fromLTRB(20, 0, 0, 16),
+              title: Text(
+                'Driver Dashboard',
+                style: GoogleFonts.inter(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+              background: Container(color: RoverColors.primary),
+            ),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.help_outline),
+                tooltip: 'Help',
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const UserGuidePage(role: 'driver'),
+                  ),
+                ),
+              ),
+              IconButton(
+                  icon: const Icon(Icons.logout), onPressed: _logout),
+            ],
+          ),
+
+          if (_isLoading)
+            const SliverFillRemaining(
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else ...[
+            // ── Assigned events ───────────────────────────
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+                child: Text(
+                  'Assigned Events',
+                  style: GoogleFonts.inter(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: RoverColors.textSecondary,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ),
+            ),
+
+            if (_assignedEvents.isEmpty)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Center(
                     child: Text(
                       'No events assigned to you yet.',
-                      style: TextStyle(color: Colors.grey, fontSize: 16),
-                    ),
-                  )
-                else
-                  Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Your Assigned Events',
-                          style: TextStyle(
-                              fontSize: 16, fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 8),
-                        ...(_assignedEvents.map((event) {
-                          final eventDate = event['event_date'] != null
-                              ? DateTime.tryParse(
-                                  event['event_date'] as String)
-                              : null;
-                          final isActive =
-                              _activeEventId == event['id'] as int;
-                          return Card(
-                            color: isActive
-                                ? Colors.blue[50]
-                                : null,
-                            child: ListTile(
-                              title: Text(event['name'] as String? ?? 'Unnamed'),
-                              subtitle: eventDate != null
-                                  ? Text(
-                                      '${eventDate.day}/${eventDate.month}/${eventDate.year}'
-                                      '  ${eventDate.hour.toString().padLeft(2, '0')}:'
-                                      '${eventDate.minute.toString().padLeft(2, '0')}',
-                                    )
-                                  : null,
-                              trailing: ElevatedButton.icon(
-                                icon: _isScheduling &&
-                                        _activeEventId == event['id'] as int
-                                    ? const SizedBox(
-                                        width: 16,
-                                        height: 16,
-                                        child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                            color: Colors.white),
-                                      )
-                                    : Icon(
-                                        isActive
-                                            ? Icons.refresh
-                                            : Icons.play_arrow,
-                                        size: 18),
-                                label: Text(isActive
-                                    ? 'Re-route'
-                                    : 'Start Route'),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: isActive
-                                      ? Colors.orange
-                                      : Colors.green,
-                                  foregroundColor: Colors.white,
-                                ),
-                                onPressed: _isScheduling
-                                    ? null
-                                    : () => _startRoute(
-                                          event['id'] as int,
-                                          event['name'] as String? ?? 'Event',
-                                        ),
-                              ),
-                            ),
-                          );
-                        })),
-                      ],
+                      style: GoogleFonts.inter(
+                          color: RoverColors.textSecondary, fontSize: 15),
                     ),
                   ),
+                ),
+              )
+            else
+              SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                sliver: SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) {
+                      final event = _assignedEvents[index];
+                      final eventDate = event['event_date'] != null
+                          ? DateTime.tryParse(event['event_date'] as String)
+                          : null;
+                      final isActive =
+                          _activeEventId == event['id'] as int;
 
-                // ── Live pickup order (realtime stream) ──────
-                if (_activeEventId != null) ...[
-                  const Divider(height: 1),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            'Pickup Order — $_activeEventName',
-                            style: const TextStyle(
-                                fontSize: 16, fontWeight: FontWeight.bold),
+                      return _EventRouteCard(
+                        name: event['name'] as String? ?? 'Unnamed',
+                        eventDate: eventDate,
+                        isActive: isActive,
+                        isScheduling: _isScheduling &&
+                            _activeEventId == event['id'] as int,
+                        onStart: _isScheduling
+                            ? null
+                            : () => _startRoute(
+                                  event['id'] as int,
+                                  event['name'] as String? ?? 'Event',
+                                ),
+                      );
+                    },
+                    childCount: _assignedEvents.length,
+                  ),
+                ),
+              ),
+
+            // ── Live pickup order ─────────────────────────
+            if (_activeEventId != null) ...[
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Pickup Order — $_activeEventName',
+                          style: GoogleFonts.inter(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: RoverColors.textSecondary,
+                            letterSpacing: 0.5,
                           ),
                         ),
-                        Text(
-                          '${_pickupOrder.where((p) => p['status'] != 'completed').length} remaining',
-                          style: const TextStyle(
-                              color: Colors.grey, fontSize: 12),
+                      ),
+                      Text(
+                        '${_pickupOrder.where((p) => p['status'] != 'completed').length} remaining',
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          color: RoverColors.textSecondary,
                         ),
-                      ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              SliverToBoxAdapter(
+                child: StreamBuilder<List<Map<String, dynamic>>>(
+                  stream: PickupService.listenToPickupUpdates(
+                      _activeEventId!),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState ==
+                            ConnectionState.waiting &&
+                        _pickupOrder.isEmpty) {
+                      return const Padding(
+                        padding: EdgeInsets.all(32),
+                        child: Center(child: CircularProgressIndicator()),
+                      );
+                    }
+                    final pickups =
+                        snapshot.hasData && snapshot.data!.isNotEmpty
+                            ? snapshot.data!
+                            : _pickupOrder;
+
+                    if (pickups.isEmpty) {
+                      return Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Center(
+                          child: Text(
+                            'No pickup requests yet.',
+                            style: GoogleFonts.inter(
+                                color: RoverColors.textSecondary),
+                          ),
+                        ),
+                      );
+                    }
+
+                    return Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+                      child: Column(
+                        children: pickups.map((p) {
+                          final order  = p['pickup_order'];
+                          final eta    = p['eta_minutes'];
+                          final status =
+                              p['status'] as String? ?? 'pending';
+                          final userId =
+                              p['user_id'] as String? ?? '';
+                          final profile = _profilesCache[userId];
+                          final userName = profile?['full_name']
+                                  as String? ??
+                              'Passenger';
+                          final phone =
+                              profile?['phone'] as String?;
+
+                          return _PickupCard(
+                            order: order,
+                            userName: userName,
+                            phone: phone,
+                            eta: eta,
+                            status: status,
+                            onEnRoute: () =>
+                                _markEnRoute(p['id'] as int),
+                            onDone: () =>
+                                _markCompleted(p['id'] as int),
+                          );
+                        }).toList(),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Event route card — shows event info and Start/Re-route button
+// ─────────────────────────────────────────────────────────────────────────────
+class _EventRouteCard extends StatelessWidget {
+  const _EventRouteCard({
+    required this.name,
+    required this.eventDate,
+    required this.isActive,
+    required this.isScheduling,
+    required this.onStart,
+  });
+
+  final String name;
+  final DateTime? eventDate;
+  final bool isActive;
+  final bool isScheduling;
+  final VoidCallback? onStart;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: isActive ? RoverColors.primaryContainer : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: isActive
+            ? Border.all(
+                color: RoverColors.primary.withValues(alpha: 0.3),
+                width: 1)
+            : null,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
+                    style: GoogleFonts.inter(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: RoverColors.textPrimary,
                     ),
                   ),
-                  Expanded(
-                    child: StreamBuilder<List<Map<String, dynamic>>>(
-                      stream: PickupService.listenToPickupUpdates(
-                          _activeEventId!),
-                      builder: (context, snapshot) {
-                        if (snapshot.connectionState ==
-                                ConnectionState.waiting &&
-                            _pickupOrder.isEmpty) {
-                          return const Center(
-                              child: CircularProgressIndicator());
-                        }
-                        final pickups =
-                            snapshot.hasData && snapshot.data!.isNotEmpty
-                                ? snapshot.data!
-                                : _pickupOrder;
+                  if (eventDate != null) ...[
+                    const SizedBox(height: 3),
+                    Text(
+                      '${eventDate!.day}/${eventDate!.month}/${eventDate!.year}  '
+                      '${eventDate!.hour.toString().padLeft(2, '0')}:'
+                      '${eventDate!.minute.toString().padLeft(2, '0')}',
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        color: RoverColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            FilledButton.icon(
+              onPressed: onStart,
+              icon: isScheduling
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white),
+                    )
+                  : Icon(
+                      isActive ? Icons.refresh : Icons.play_arrow,
+                      size: 16),
+              label: Text(
+                isActive ? 'Re-route' : 'Start Route',
+                style: GoogleFonts.inter(
+                    fontSize: 13, fontWeight: FontWeight.w600),
+              ),
+              style: FilledButton.styleFrom(
+                backgroundColor: isActive
+                    ? RoverColors.secondary
+                    : RoverColors.primary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 14, vertical: 10),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
-                        if (pickups.isEmpty) {
-                          return const Center(
-                            child: Text('No pickup requests yet.'),
-                          );
-                        }
+// ─────────────────────────────────────────────────────────────────────────────
+// Pickup list card
+// ─────────────────────────────────────────────────────────────────────────────
+class _PickupCard extends StatelessWidget {
+  const _PickupCard({
+    required this.order,
+    required this.userName,
+    required this.phone,
+    required this.eta,
+    required this.status,
+    required this.onEnRoute,
+    required this.onDone,
+  });
 
-                        return ListView.builder(
-                          padding:
-                              const EdgeInsets.symmetric(horizontal: 12),
-                          itemCount: pickups.length,
-                          itemBuilder: (context, i) {
-                            final p      = pickups[i];
-                            final order  = p['pickup_order'];
-                            final eta    = p['eta_minutes'];
-                            final status = p['status'] as String? ?? 'pending';
+  final dynamic order;
+  final String userName;
+  final String? phone;
+  final dynamic eta;
+  final String status;
+  final VoidCallback onEnRoute;
+  final VoidCallback onDone;
 
-                            // Fix M-3: resolve name/phone from pre-fetched cache
-                            final userId  = p['user_id'] as String? ?? '';
-                            final profile = _profilesCache[userId];
-                            final userName =
-                                profile?['full_name'] as String? ?? 'Passenger';
-                            final phone = profile?['phone'] as String?;
+  Color get _cardColor {
+    if (status == 'completed') return RoverColors.primaryContainer;
+    if (status == 'en_route') return RoverColors.secondaryContainer;
+    return Colors.white;
+  }
 
-                            final isCompleted = status == 'completed';
-                            final isEnRoute   = status == 'en_route';
+  @override
+  Widget build(BuildContext context) {
+    final isCompleted = status == 'completed';
+    final isEnRoute   = status == 'en_route';
 
-                            return Card(
-                              color: isCompleted
-                                  ? Colors.green[50]
-                                  : isEnRoute
-                                      ? Colors.blue[50]
-                                      : null,
-                              child: ListTile(
-                                leading: CircleAvatar(
-                                  backgroundColor: isCompleted
-                                      ? Colors.green
-                                      : isEnRoute
-                                          ? Colors.blue
-                                          : const Color(0xFF478DE0),
-                                  child: Text(
-                                    order?.toString() ?? '?',
-                                    style: const TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold),
-                                  ),
-                                ),
-                                title: Text(userName),
-                                subtitle: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
-                                  children: [
-                                    if (eta != null)
-                                      Text('ETA: $eta min'),
-                                    if (phone != null)
-                                      Text('Phone: $phone'),
-                                    _statusChip(status),
-                                  ],
-                                ),
-                                // Fix L-2: show en_route and completed actions
-                                trailing: isCompleted
-                                    ? const Icon(Icons.check_circle,
-                                        color: Colors.green)
-                                    : Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          if (!isEnRoute)
-                                            TextButton(
-                                              style: TextButton.styleFrom(
-                                                foregroundColor: Colors.blue,
-                                              ),
-                                              child: const Text('On\nWay',
-                                                  textAlign:
-                                                      TextAlign.center,
-                                                  style: TextStyle(
-                                                      fontSize: 11)),
-                                              onPressed: () => _markEnRoute(
-                                                  p['id'] as int),
-                                            ),
-                                          TextButton(
-                                            style: TextButton.styleFrom(
-                                              foregroundColor: Colors.green,
-                                            ),
-                                            child: const Text('Done'),
-                                            onPressed: () => _markCompleted(
-                                                p['id'] as int),
-                                          ),
-                                        ],
-                                      ),
-                              ),
-                            );
-                          },
-                        );
-                      },
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: _cardColor,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Order badge
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: isCompleted
+                    ? RoverColors.primary
+                    : isEnRoute
+                        ? RoverColors.secondary
+                        : RoverColors.primary,
+                shape: BoxShape.circle,
+              ),
+              child: Center(
+                child: Text(
+                  order?.toString() ?? '?',
+                  style: GoogleFonts.inter(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    userName,
+                    style: GoogleFonts.inter(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: RoverColors.textPrimary,
+                    ),
+                  ),
+                  if (eta != null)
+                    Text(
+                      'ETA: $eta min',
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        color: RoverColors.textSecondary,
+                      ),
+                    ),
+                  if (phone != null)
+                    Text(
+                      phone!,
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        color: RoverColors.textSecondary,
+                      ),
+                    ),
+                  const SizedBox(height: 6),
+                  _StatusChip(status: status),
+                ],
+              ),
+            ),
+            // Actions
+            if (isCompleted)
+              Icon(Icons.check_circle,
+                  color: RoverColors.primary, size: 22)
+            else
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (!isEnRoute)
+                    TextButton(
+                      style: TextButton.styleFrom(
+                        foregroundColor: RoverColors.secondary,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                      ),
+                      onPressed: onEnRoute,
+                      child: Text(
+                        'On\nWay',
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.inter(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  TextButton(
+                    style: TextButton.styleFrom(
+                      foregroundColor: RoverColors.primary,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                    ),
+                    onPressed: onDone,
+                    child: Text(
+                      'Done',
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ],
-              ],
-            ),
+              ),
+          ],
+        ),
+      ),
     );
   }
+}
 
-  Widget _statusChip(String status) {
+// ─────────────────────────────────────────────────────────────────────────────
+// Status chip — traffic light palette
+// ─────────────────────────────────────────────────────────────────────────────
+class _StatusChip extends StatelessWidget {
+  const _StatusChip({required this.status});
+  final String status;
+
+  @override
+  Widget build(BuildContext context) {
     Color bg;
+    Color fg;
     String label;
+
     switch (status) {
       case 'en_route':
-        bg    = Colors.blue;
+        bg    = RoverColors.secondaryContainer;
+        fg    = RoverColors.secondary;
         label = 'En Route';
         break;
       case 'completed':
-        bg    = Colors.green;
+        bg    = RoverColors.primaryContainer;
+        fg    = RoverColors.primary;
         label = 'Picked Up';
         break;
       default:
-        bg    = Colors.grey;
+        bg    = RoverColors.surfaceContainerHigh;
+        fg    = RoverColors.textSecondary;
         label = 'Waiting';
     }
+
     return Container(
-      margin: const EdgeInsets.only(top: 4),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: bg.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: bg.withValues(alpha: 0.4)),
+        color: bg,
+        borderRadius: BorderRadius.circular(20),
       ),
       child: Text(
         label,
-        style: TextStyle(
-            fontSize: 11, color: bg, fontWeight: FontWeight.w600),
+        style: GoogleFonts.inter(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: fg,
+        ),
       ),
     );
   }

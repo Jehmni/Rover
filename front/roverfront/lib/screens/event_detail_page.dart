@@ -3,8 +3,10 @@
 // User actions: Subscribe / Unsubscribe, Request Pickup, view live ETA.
 
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../services/event_service.dart';
 import '../services/pickup_service.dart';
+import '../theme/rover_theme.dart';
 import 'user_guide_page.dart';
 
 class EventDetailPage extends StatefulWidget {
@@ -55,10 +57,10 @@ class _EventDetailPageState extends State<EventDetailPage> {
     try {
       if (_isSubscribed) {
         await EventService.unsubscribe(widget.eventId);
-        _showSnack('Unsubscribed from event.', Colors.orange);
+        _showSnack('Unsubscribed from event.', RoverColors.secondary);
       } else {
         await EventService.subscribe(widget.eventId);
-        _showSnack('Subscribed successfully!', Colors.green);
+        _showSnack('Subscribed successfully!', RoverColors.primary);
       }
       setState(() => _isSubscribed = !_isSubscribed);
     } catch (e) {
@@ -74,7 +76,9 @@ class _EventDetailPageState extends State<EventDetailPage> {
       await PickupService.requestPickup(widget.eventId);
       // Fix L-6: set persistent state so button becomes an indicator
       if (mounted) setState(() => _hasPickup = true);
-      _showSnack('Pickup requested! You will be notified when the driver is on the way.', Colors.green);
+      _showSnack(
+          'Pickup requested! You will be notified when the driver is on the way.',
+          RoverColors.primary);
     } catch (e) {
       _showError(e.toString().replaceFirst('Exception: ', ''));
     } finally {
@@ -115,208 +119,374 @@ class _EventDetailPageState extends State<EventDetailPage> {
     final eventDate = _event!['event_date'] != null
         ? DateTime.tryParse(_event!['event_date'] as String)
         : null;
+    final eventName = _event!['name'] as String? ?? 'Event Details';
+    final eventType = _event!['event_type'] as String?;
+    final location  = _event!['location_name'] as String?;
+    final desc      = _event!['description'] as String?;
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(_event!['name'] as String? ?? 'Event Details'),
-        backgroundColor: const Color(0xFF478DE0),
-        foregroundColor: Colors.white,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.help_outline),
-            tooltip: 'Help',
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => const UserGuidePage(role: 'user'),
+      backgroundColor: RoverColors.surface,
+      body: CustomScrollView(
+        slivers: [
+          // ── App bar ──────────────────────────────────────
+          SliverAppBar(
+            pinned: true,
+            backgroundColor: RoverColors.primary,
+            foregroundColor: Colors.white,
+            expandedHeight: 140,
+            flexibleSpace: FlexibleSpaceBar(
+              titlePadding: const EdgeInsets.fromLTRB(20, 0, 60, 16),
+              title: Text(
+                eventName,
+                style: GoogleFonts.inter(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
+              background: Container(color: RoverColors.primary),
             ),
-          ),
-        ],
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              _event!['name'] as String? ?? '',
-              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            if (eventDate != null)
-              Row(
-                children: [
-                  const Icon(Icons.calendar_today, size: 16, color: Colors.grey),
-                  const SizedBox(width: 6),
-                  Text(
-                    '${eventDate.day}/${eventDate.month}/${eventDate.year}  '
-                    '${eventDate.hour.toString().padLeft(2, '0')}:'
-                    '${eventDate.minute.toString().padLeft(2, '0')}',
-                    style: const TextStyle(color: Colors.grey),
-                  ),
-                ],
-              ),
-            if (_event!['event_type'] != null) ...[
-              const SizedBox(height: 6),
-              Chip(
-                label: Text(_event!['event_type'] as String),
-                backgroundColor: const Color(0xFF73AEF5),
-                labelStyle: const TextStyle(color: Colors.white),
-              ),
-            ],
-            if (_event!['location_name'] != null) ...[
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  const Icon(Icons.location_on, size: 16, color: Colors.grey),
-                  const SizedBox(width: 6),
-                  Flexible(
-                    child: Text(
-                      _event!['location_name'] as String,
-                      style: const TextStyle(color: Colors.grey),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-            const SizedBox(height: 16),
-            if (_event!['description'] != null)
-              Text(
-                _event!['description'] as String,
-                style: const TextStyle(fontSize: 16, height: 1.5),
-              ),
-            const SizedBox(height: 8),
-            Text(
-              'Organised by: $adminName',
-              style: const TextStyle(color: Colors.grey, fontSize: 13),
-            ),
-            const Spacer(),
-            // Live ETA card — shown once user has a pickup request
-            StreamBuilder<Map<String, dynamic>?>(
-              stream: PickupService.listenToMyPickup(widget.eventId),
-              builder: (context, snapshot) {
-                // Connecting — show a subtle progress bar, not a blocking spinner
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const SizedBox(
-                    height: 4,
-                    child: LinearProgressIndicator(),
-                  );
-                }
-                // Stream error (e.g. Realtime channel dropped)
-                if (snapshot.hasError) {
-                  return const Card(
-                    color: Color(0xFFFFF3E0),
-                    child: ListTile(
-                      leading: Icon(Icons.warning_amber, color: Colors.orange),
-                      title: Text('Could not load pickup status.'),
-                      subtitle: Text('Check your connection and try again.'),
-                    ),
-                  );
-                }
-                final pickup = snapshot.data;
-                // No pickup request yet — nothing to show
-                if (pickup == null) return const SizedBox.shrink();
-
-                // Pickup exists but admin hasn't assigned a driver yet
-                final hasDriver = _event!['assigned_driver_id'] != null;
-                if (!hasDriver) {
-                  return const Card(
-                    color: Color(0xFFE8F4FD),
-                    child: ListTile(
-                      leading: Icon(Icons.hourglass_empty,
-                          color: Color(0xFF478DE0)),
-                      title: Text('Pickup request received'),
-                      subtitle: Text(
-                          'Waiting for a driver to be assigned to this event.'),
-                    ),
-                  );
-                }
-
-                // Normal ETA card — driver assigned and route may be scheduled
-                return Card(
-                  color: const Color(0xFFE8F4FD),
-                  child: ListTile(
-                    leading: const Icon(Icons.directions_bus,
-                        color: Color(0xFF478DE0)),
-                    title: Text('Pickup #${pickup['pickup_order'] ?? '-'}'),
-                    subtitle: Text(
-                      pickup['eta_minutes'] != null
-                          ? 'ETA: ${pickup['eta_minutes']} min'
-                            '  •  Status: ${pickup['status']}'
-                          : 'Status: ${pickup['status']}',
-                    ),
-                  ),
-                );
-              },
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: _isActing ? null : _toggleSubscription,
-                    icon: Icon(_isSubscribed ? Icons.remove_circle_outline : Icons.add_circle_outline),
-                    label: Text(_isSubscribed ? 'Unsubscribe' : 'Subscribe'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _isSubscribed ? Colors.orange : const Color(0xFF478DE0),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(30),
-                      ),
-                    ),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.help_outline),
+                tooltip: 'Help',
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const UserGuidePage(role: 'user'),
                   ),
                 ),
-                const SizedBox(width: 12),
-                // Fix L-6: once a pickup is requested, replace the button
-                // with a persistent "Pickup Requested" indicator so the
-                // user always knows their current state.
-                Expanded(
-                  child: _hasPickup
-                      ? Container(
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          decoration: BoxDecoration(
-                            color: Colors.green[50],
-                            borderRadius: BorderRadius.circular(30),
-                            border: Border.all(color: Colors.green),
+              ),
+            ],
+          ),
+
+          SliverPadding(
+            padding: const EdgeInsets.all(20),
+            sliver: SliverList(
+              delegate: SliverChildListDelegate([
+                // Event metadata card
+                _InfoCard(
+                  children: [
+                    if (eventDate != null)
+                      _InfoRow(
+                        icon: Icons.calendar_today,
+                        text:
+                            '${eventDate.day}/${eventDate.month}/${eventDate.year}  '
+                            '${eventDate.hour.toString().padLeft(2, '0')}:'
+                            '${eventDate.minute.toString().padLeft(2, '0')}',
+                      ),
+                    if (location != null) ...[
+                      const SizedBox(height: 10),
+                      _InfoRow(icon: Icons.location_on, text: location),
+                    ],
+                    if (eventType != null) ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: RoverColors.secondaryContainer,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          eventType,
+                          style: GoogleFonts.inter(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: RoverColors.secondary,
                           ),
-                          child: const Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    _InfoRow(
+                      icon: Icons.person_outline,
+                      text: 'Organised by $adminName',
+                      small: true,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                // Description
+                if (desc != null) ...[
+                  _InfoCard(
+                    children: [
+                      Text(
+                        desc,
+                        style: GoogleFonts.inter(
+                          fontSize: 15,
+                          color: RoverColors.textPrimary,
+                          height: 1.6,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                ],
+
+                // Live ETA card
+                StreamBuilder<Map<String, dynamic>?>(
+                  stream: PickupService.listenToMyPickup(widget.eventId),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const SizedBox(
+                        height: 4,
+                        child: LinearProgressIndicator(),
+                      );
+                    }
+                    if (snapshot.hasError) {
+                      return _InfoCard(
+                        color: const Color(0xFFFFF3E0),
+                        children: [
+                          Row(
                             children: [
-                              Icon(Icons.check_circle,
-                                  color: Colors.green, size: 18),
-                              SizedBox(width: 6),
-                              Text(
-                                'Pickup Requested',
-                                style: TextStyle(
-                                  color: Colors.green,
-                                  fontWeight: FontWeight.bold,
+                              const Icon(Icons.warning_amber,
+                                  color: Colors.orange, size: 20),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  'Could not load pickup status. Check your connection.',
+                                  style: GoogleFonts.inter(fontSize: 13),
                                 ),
                               ),
                             ],
                           ),
-                        )
-                      : ElevatedButton.icon(
-                          onPressed:
-                              (_isActing || !_isSubscribed) ? null : _requestPickup,
-                          icon: const Icon(Icons.local_taxi),
-                          label: const Text('Request Pickup'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green,
-                            foregroundColor: Colors.white,
-                            padding:
-                                const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(30),
-                            ),
+                        ],
+                      );
+                    }
+
+                    final pickup = snapshot.data;
+                    if (pickup == null) return const SizedBox.shrink();
+
+                    final hasDriver = _event!['assigned_driver_id'] != null;
+                    if (!hasDriver) {
+                      return _InfoCard(
+                        color: RoverColors.primaryContainer,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(Icons.hourglass_empty,
+                                  color: RoverColors.primary, size: 20),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Pickup request received',
+                                      style: GoogleFonts.inter(
+                                        fontWeight: FontWeight.w600,
+                                        color: RoverColors.primary,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                    Text(
+                                      'Waiting for a driver to be assigned.',
+                                      style: GoogleFonts.inter(
+                                        fontSize: 12,
+                                        color: RoverColors.textSecondary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
+                        ],
+                      );
+                    }
+
+                    return _InfoCard(
+                      color: RoverColors.primaryContainer,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.directions_bus,
+                                color: RoverColors.primary, size: 22),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Pickup #${pickup['pickup_order'] ?? '-'}',
+                                    style: GoogleFonts.inter(
+                                      fontWeight: FontWeight.w700,
+                                      color: RoverColors.primary,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                  Text(
+                                    pickup['eta_minutes'] != null
+                                        ? 'ETA: ${pickup['eta_minutes']} min  •  Status: ${pickup['status']}'
+                                        : 'Status: ${pickup['status']}',
+                                    style: GoogleFonts.inter(
+                                      fontSize: 12,
+                                      color: RoverColors.textSecondary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
+                      ],
+                    );
+                  },
                 ),
-              ],
+
+                const SizedBox(height: 24),
+
+                // Action buttons
+                Row(
+                  children: [
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: _isActing ? null : _toggleSubscription,
+                        icon: Icon(
+                          _isSubscribed
+                              ? Icons.remove_circle_outline
+                              : Icons.add_circle_outline,
+                          size: 18,
+                        ),
+                        label: Text(
+                          _isSubscribed ? 'Unsubscribe' : 'Subscribe',
+                          style: GoogleFonts.inter(
+                              fontSize: 14, fontWeight: FontWeight.w600),
+                        ),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: _isSubscribed
+                              ? RoverColors.secondary
+                              : RoverColors.primary,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14)),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    // Fix L-6: once a pickup is requested, replace the button
+                    // with a persistent "Pickup Requested" indicator.
+                    Expanded(
+                      child: _hasPickup
+                          ? Container(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              decoration: BoxDecoration(
+                                color: RoverColors.primaryContainer,
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.check_circle,
+                                      color: RoverColors.primary, size: 18),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'Pickup Requested',
+                                    style: GoogleFonts.inter(
+                                      color: RoverColors.primary,
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )
+                          : FilledButton.icon(
+                              onPressed: (_isActing || !_isSubscribed)
+                                  ? null
+                                  : _requestPickup,
+                              icon: const Icon(Icons.local_taxi, size: 18),
+                              label: Text(
+                                'Request Pickup',
+                                style: GoogleFonts.inter(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600),
+                              ),
+                              style: FilledButton.styleFrom(
+                                backgroundColor: RoverColors.primary,
+                                foregroundColor: Colors.white,
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(14)),
+                              ),
+                            ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+              ]),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Shared helper widgets
+// ─────────────────────────────────────────────────────────────────────────────
+class _InfoCard extends StatelessWidget {
+  const _InfoCard({required this.children, this.color});
+  final List<Widget> children;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color ?? Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: children,
+      ),
+    );
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  const _InfoRow({
+    required this.icon,
+    required this.text,
+    this.small = false,
+  });
+  final IconData icon;
+  final String text;
+  final bool small;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: small ? 14 : 16, color: RoverColors.textSecondary),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            text,
+            style: GoogleFonts.inter(
+              fontSize: small ? 12 : 14,
+              color: small ? RoverColors.textSecondary : RoverColors.textPrimary,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

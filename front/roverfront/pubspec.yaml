@@ -35,6 +35,9 @@ dependencies:
   # ── Persist deep-link token across app restarts ──
   shared_preferences: ^2.3.2
 
+  # ── Typography: Inter font via Google Fonts ──
+  google_fonts: ^6.2.1
+
   # ── Onboarding: deep links, QR display, share sheet, QR scan ──
   # app_links: parse rover.app/join/TOKEN deep links
   app_links: ^6.3.4

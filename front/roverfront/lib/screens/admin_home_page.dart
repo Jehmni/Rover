@@ -7,12 +7,14 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/auth_service.dart';
 import '../services/event_service.dart';
 import '../services/org_service.dart';
+import '../theme/rover_theme.dart';
 import '../widgets/auth_dialog.dart';
 import 'user_guide_page.dart';
 
@@ -57,19 +59,27 @@ class _AdminHomePageState extends State<AdminHomePage>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: RoverColors.surface,
       appBar: AppBar(
+        backgroundColor: RoverColors.primary,
+        foregroundColor: Colors.white,
+        elevation: 0,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Rover — Admin',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            Text(
+              'Admin Dashboard',
+              style: GoogleFonts.inter(
+                  fontSize: 17, fontWeight: FontWeight.w700, color: Colors.white),
+            ),
             if (_orgName != null)
-              Text(_orgName!,
-                  style: const TextStyle(fontSize: 12, color: Colors.white70)),
+              Text(
+                _orgName!,
+                style: GoogleFonts.inter(
+                    fontSize: 12, color: Colors.white70),
+              ),
           ],
         ),
-        backgroundColor: const Color(0xFF478DE0),
-        foregroundColor: Colors.white,
         actions: [
           IconButton(
             icon: const Icon(Icons.help_outline),
@@ -85,12 +95,15 @@ class _AdminHomePageState extends State<AdminHomePage>
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: Colors.white,
+          indicatorWeight: 3,
           labelColor: Colors.white,
-          unselectedLabelColor: Colors.white60,
+          unselectedLabelColor: Colors.white54,
+          labelStyle: GoogleFonts.inter(
+              fontSize: 12, fontWeight: FontWeight.w600),
           tabs: const [
-            Tab(icon: Icon(Icons.event), text: 'Events'),
-            Tab(icon: Icon(Icons.people), text: 'Members'),
-            Tab(icon: Icon(Icons.share), text: 'Share'),
+            Tab(icon: Icon(Icons.event, size: 20), text: 'Events'),
+            Tab(icon: Icon(Icons.people, size: 20), text: 'Members'),
+            Tab(icon: Icon(Icons.share, size: 20), text: 'Share'),
           ],
         ),
       ),
@@ -149,7 +162,7 @@ class _EventsTabState extends State<_EventsTab> {
 
   // ── Create / Edit event dialog ─────────────────────────────
   void _showEventDialog({Map<String, dynamic>? existing}) {
-    final ev = existing; // local non-nullable alias used inside closures
+    final ev = existing;
     final nameCtrl = TextEditingController(text: ev?['name'] as String? ?? '');
     final descCtrl = TextEditingController(text: ev?['description'] as String? ?? '');
     final typeCtrl = TextEditingController(text: ev?['event_type'] as String? ?? '');
@@ -163,7 +176,8 @@ class _EventsTabState extends State<_EventsTab> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDS) => AlertDialog(
-          title: Text(isEdit ? 'Edit Event' : 'Create Event'),
+          title: Text(isEdit ? 'Edit Event' : 'Create Event',
+              style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -208,11 +222,10 @@ class _EventsTabState extends State<_EventsTab> {
                           context: ctx,
                           initialDate: pickedDate ??
                               DateTime.now().add(const Duration(days: 1)),
-                          // Fix M-8: DB CHECK constraint is event_date > now() - 1 hour.
-                          // Align the picker's firstDate to the same 55-minute grace window
-                          // so the picker never allows a date the DB will reject.
-                          firstDate: DateTime.now().subtract(const Duration(minutes: 55)),
-                          lastDate: DateTime.now().add(const Duration(days: 365 * 2)),
+                          firstDate: DateTime.now()
+                              .subtract(const Duration(minutes: 55)),
+                          lastDate: DateTime.now()
+                              .add(const Duration(days: 365 * 2)),
                         );
                         if (d == null) return;
                         if (!ctx.mounted) return;
@@ -240,7 +253,9 @@ class _EventsTabState extends State<_EventsTab> {
               child: const Text('Cancel'),
               onPressed: () => Navigator.of(ctx).pop(),
             ),
-            ElevatedButton(
+            FilledButton(
+              style: FilledButton.styleFrom(
+                  backgroundColor: RoverColors.primary),
               child: Text(isEdit ? 'Save' : 'Create'),
               onPressed: () async {
                 if (nameCtrl.text.trim().isEmpty || pickedDate == null) {
@@ -257,21 +272,33 @@ class _EventsTabState extends State<_EventsTab> {
                     await EventService.updateEvent(
                       ev['id'] as int,
                       name:         nameCtrl.text.trim(),
-                      description:  descCtrl.text.trim().isEmpty ? null : descCtrl.text.trim(),
-                      eventType:    typeCtrl.text.trim().isEmpty ? null : typeCtrl.text.trim(),
-                      locationName: locCtrl.text.trim().isEmpty ? null : locCtrl.text.trim(),
+                      description:  descCtrl.text.trim().isEmpty
+                          ? null
+                          : descCtrl.text.trim(),
+                      eventType:    typeCtrl.text.trim().isEmpty
+                          ? null
+                          : typeCtrl.text.trim(),
+                      locationName: locCtrl.text.trim().isEmpty
+                          ? null
+                          : locCtrl.text.trim(),
                       eventDate:    pickedDate!,
                     );
-                    _snack('Event updated.', Colors.green);
+                    _snack('Event updated.', RoverColors.primary);
                   } else {
                     await EventService.createEvent(
                       name:         nameCtrl.text.trim(),
-                      description:  descCtrl.text.trim().isEmpty ? null : descCtrl.text.trim(),
+                      description:  descCtrl.text.trim().isEmpty
+                          ? null
+                          : descCtrl.text.trim(),
                       eventDate:    pickedDate!,
-                      eventType:    typeCtrl.text.trim().isEmpty ? null : typeCtrl.text.trim(),
-                      locationName: locCtrl.text.trim().isEmpty ? null : locCtrl.text.trim(),
+                      eventType:    typeCtrl.text.trim().isEmpty
+                          ? null
+                          : typeCtrl.text.trim(),
+                      locationName: locCtrl.text.trim().isEmpty
+                          ? null
+                          : locCtrl.text.trim(),
                     );
-                    _snack('Event created!', Colors.green);
+                    _snack('Event created!', RoverColors.primary);
                   }
                   await _load();
                 } catch (e) {
@@ -300,7 +327,8 @@ class _EventsTabState extends State<_EventsTab> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDS) => AlertDialog(
           title: Text('Assign Driver\n$eventName',
-              style: const TextStyle(fontSize: 15)),
+              style: GoogleFonts.inter(
+                  fontSize: 15, fontWeight: FontWeight.w700)),
           content: DropdownButton<String>(
             value: selectedId,
             hint: const Text('Select a driver'),
@@ -316,7 +344,9 @@ class _EventsTabState extends State<_EventsTab> {
               child: const Text('Cancel'),
               onPressed: () => Navigator.of(ctx).pop(),
             ),
-            ElevatedButton(
+            FilledButton(
+              style: FilledButton.styleFrom(
+                  backgroundColor: RoverColors.primary),
               onPressed: selectedId == null
                   ? null
                   : () async {
@@ -324,7 +354,7 @@ class _EventsTabState extends State<_EventsTab> {
                       setState(() => _isActing = true);
                       try {
                         await EventService.assignDriver(eventId, selectedId!);
-                        _snack('Driver assigned!', Colors.green);
+                        _snack('Driver assigned!', RoverColors.primary);
                         await _load();
                       } catch (e) {
                         _err(e.toString().replaceFirst('Exception: ', ''));
@@ -355,12 +385,13 @@ class _EventsTabState extends State<_EventsTab> {
     try {
       final attendees = await EventService.getEventAttendees(eventId);
       if (!mounted) return;
-      Navigator.of(context).pop(); // close loading dialog
+      Navigator.of(context).pop();
 
       showDialog(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: Text('Attendees — $eventName'),
+          title: Text('Attendees — $eventName',
+              style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
           content: SizedBox(
             width: double.maxFinite,
             child: attendees.isEmpty
@@ -371,13 +402,14 @@ class _EventsTabState extends State<_EventsTab> {
                     itemBuilder: (_, i) {
                       final profile =
                           attendees[i]['profiles'] as Map? ?? {};
-                      final name = profile['full_name'] as String? ?? 'User';
+                      final name =
+                          profile['full_name'] as String? ?? 'User';
                       final phone = profile['phone'] as String?;
                       return ListTile(
                         dense: true,
                         leading: CircleAvatar(
                           radius: 16,
-                          backgroundColor: const Color(0xFF73AEF5),
+                          backgroundColor: RoverColors.primary,
                           child: Text(name[0].toUpperCase(),
                               style: const TextStyle(
                                   color: Colors.white, fontSize: 12)),
@@ -410,15 +442,17 @@ class _EventsTabState extends State<_EventsTab> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Cancel Event?'),
-        content: Text('This will cancel "$name". Attendees will no longer see it.'),
+        content: Text(
+            'This will cancel "$name". Attendees will no longer see it.'),
         actions: [
           TextButton(
               onPressed: () => Navigator.of(ctx).pop(false),
               child: const Text('No')),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Yes, Cancel'),
+            child: const Text('Yes, Cancel',
+                style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -427,7 +461,7 @@ class _EventsTabState extends State<_EventsTab> {
     setState(() => _isActing = true);
     try {
       await EventService.cancelEvent(eventId);
-      _snack('Event cancelled.', Colors.orange);
+      _snack('Event cancelled.', RoverColors.secondary);
       await _load();
     } catch (e) {
       _err(e.toString().replaceFirst('Exception: ', ''));
@@ -450,22 +484,35 @@ class _EventsTabState extends State<_EventsTab> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: RoverColors.surface,
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _isActing ? null : () => _showEventDialog(),
-        backgroundColor: const Color(0xFF478DE0),
+        backgroundColor: RoverColors.primary,
+        foregroundColor: Colors.white,
         icon: const Icon(Icons.add),
-        label: const Text('New Event'),
+        label: Text('New Event',
+            style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _events.isEmpty
-              ? const Center(
-                  child: Text('No events yet. Tap + to create one.',
-                      style: TextStyle(color: Colors.grey, fontSize: 16)))
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.event_note,
+                          size: 56, color: RoverColors.textSecondary),
+                      const SizedBox(height: 12),
+                      Text('No events yet. Tap + to create one.',
+                          style: GoogleFonts.inter(
+                              color: RoverColors.textSecondary, fontSize: 15)),
+                    ],
+                  ),
+                )
               : RefreshIndicator(
                   onRefresh: _load,
                   child: ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 100),
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
                     itemCount: _events.length,
                     itemBuilder: (_, i) {
                       final ev = _events[i];
@@ -477,87 +524,138 @@ class _EventsTabState extends State<_EventsTab> {
                       final isCancelled =
                           (ev['status'] as String?) == 'cancelled';
 
-                      return Card(
-                        margin: const EdgeInsets.only(bottom: 10),
-                        color: isCancelled ? Colors.grey[100] : null,
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                          color: isCancelled
+                              ? RoverColors.surfaceContainerLow
+                              : Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          border: isCancelled
+                              ? null
+                              : Border(
+                                  left: BorderSide(
+                                      color: RoverColors.primary, width: 4),
+                                ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.05),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
                         child: Padding(
-                          padding: const EdgeInsets.all(8),
+                          padding: const EdgeInsets.all(14),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              ListTile(
-                                contentPadding: EdgeInsets.zero,
-                                title: Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        ev['name'] as String? ?? 'Unnamed',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          color: isCancelled
-                                              ? Colors.grey
-                                              : null,
-                                        ),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      ev['name'] as String? ?? 'Unnamed',
+                                      style: GoogleFonts.inter(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w700,
+                                        color: isCancelled
+                                            ? RoverColors.textSecondary
+                                            : RoverColors.textPrimary,
                                       ),
                                     ),
-                                    if (isCancelled)
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 8, vertical: 2),
-                                        decoration: BoxDecoration(
-                                          color: Colors.grey[300],
-                                          borderRadius:
-                                              BorderRadius.circular(12),
-                                        ),
-                                        child: const Text('CANCELLED',
-                                            style: TextStyle(
-                                                fontSize: 10,
-                                                color: Colors.grey)),
+                                  ),
+                                  if (isCancelled)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 8, vertical: 3),
+                                      decoration: BoxDecoration(
+                                        color: RoverColors.surfaceContainerHigh,
+                                        borderRadius: BorderRadius.circular(12),
                                       ),
-                                  ],
-                                ),
-                                subtitle: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    if (date != null)
-                                      Text(
-                                        '${date.day}/${date.month}/${date.year}  '
-                                        '${date.hour.toString().padLeft(2, '0')}:'
-                                        '${date.minute.toString().padLeft(2, '0')}',
-                                        style: const TextStyle(
-                                            color: Colors.grey),
-                                      ),
-                                    if (ev['event_type'] != null)
-                                      Text(ev['event_type'] as String,
-                                          style: const TextStyle(
-                                              color: Color(0xFF478DE0))),
-                                    if (ev['location_name'] != null)
-                                      Text(ev['location_name'] as String,
-                                          style: const TextStyle(
-                                              color: Colors.grey,
-                                              fontSize: 12)),
-                                    if (!isCancelled)
-                                      Text(
-                                        driverName != null
-                                            ? 'Driver: $driverName'
-                                            : 'No driver assigned',
-                                        style: TextStyle(
-                                          color: driverName != null
-                                              ? Colors.green
-                                              : Colors.orange,
-                                        ),
-                                      ),
-                                  ],
-                                ),
+                                      child: Text('CANCELLED',
+                                          style: GoogleFonts.inter(
+                                              fontSize: 10,
+                                              color: RoverColors.textSecondary,
+                                              fontWeight: FontWeight.w600)),
+                                    ),
+                                ],
                               ),
-                              if (!isCancelled)
-                                OverflowBar(
-                                  alignment: MainAxisAlignment.end,
+                              const SizedBox(height: 6),
+                              if (date != null)
+                                Row(
                                   children: [
-                                    TextButton.icon(
-                                      icon: const Icon(Icons.people_outline,
-                                          size: 18),
-                                      label: const Text('Attendees'),
+                                    Icon(Icons.calendar_today,
+                                        size: 12,
+                                        color: RoverColors.textSecondary),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      '${date.day}/${date.month}/${date.year}  '
+                                      '${date.hour.toString().padLeft(2, '0')}:'
+                                      '${date.minute.toString().padLeft(2, '0')}',
+                                      style: GoogleFonts.inter(
+                                          fontSize: 12,
+                                          color: RoverColors.textSecondary),
+                                    ),
+                                  ],
+                                ),
+                              if (ev['event_type'] != null) ...[
+                                const SizedBox(height: 4),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: RoverColors.secondaryContainer,
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Text(ev['event_type'] as String,
+                                      style: GoogleFonts.inter(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                          color: RoverColors.secondary)),
+                                ),
+                              ],
+                              if (ev['location_name'] != null) ...[
+                                const SizedBox(height: 4),
+                                Text(ev['location_name'] as String,
+                                    style: GoogleFonts.inter(
+                                        fontSize: 12,
+                                        color: RoverColors.textSecondary)),
+                              ],
+                              if (!isCancelled) ...[
+                                const SizedBox(height: 6),
+                                Row(
+                                  children: [
+                                    Icon(
+                                      Icons.directions_bus,
+                                      size: 14,
+                                      color: driverName != null
+                                          ? RoverColors.primary
+                                          : RoverColors.secondary,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      driverName != null
+                                          ? 'Driver: $driverName'
+                                          : 'No driver assigned',
+                                      style: GoogleFonts.inter(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: driverName != null
+                                            ? RoverColors.primary
+                                            : RoverColors.secondary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                              if (!isCancelled) ...[
+                                const SizedBox(height: 10),
+                                Wrap(
+                                  spacing: 4,
+                                  children: [
+                                    _ActionChip(
+                                      icon: Icons.people_outline,
+                                      label: 'Attendees',
                                       onPressed: _isActing
                                           ? null
                                           : () => _showAttendeesDialog(
@@ -566,10 +664,9 @@ class _EventsTabState extends State<_EventsTab> {
                                                     'Event',
                                               ),
                                     ),
-                                    TextButton.icon(
-                                      icon: const Icon(Icons.directions_bus,
-                                          size: 18),
-                                      label: const Text('Assign Driver'),
+                                    _ActionChip(
+                                      icon: Icons.directions_bus,
+                                      label: 'Assign Driver',
                                       onPressed: _isActing
                                           ? null
                                           : () => _showAssignDriverDialog(
@@ -578,19 +675,17 @@ class _EventsTabState extends State<_EventsTab> {
                                                     'Event',
                                               ),
                                     ),
-                                    TextButton.icon(
-                                      icon: const Icon(Icons.edit, size: 18),
-                                      label: const Text('Edit'),
+                                    _ActionChip(
+                                      icon: Icons.edit,
+                                      label: 'Edit',
                                       onPressed: _isActing
                                           ? null
                                           : () => _showEventDialog(existing: ev),
                                     ),
-                                    TextButton.icon(
-                                      icon: const Icon(Icons.cancel,
-                                          size: 18, color: Colors.red),
-                                      label: const Text('Cancel',
-                                          style:
-                                              TextStyle(color: Colors.red)),
+                                    _ActionChip(
+                                      icon: Icons.cancel,
+                                      label: 'Cancel',
+                                      danger: true,
                                       onPressed: _isActing
                                           ? null
                                           : () => _cancelEvent(
@@ -601,6 +696,7 @@ class _EventsTabState extends State<_EventsTab> {
                                     ),
                                   ],
                                 ),
+                              ],
                             ],
                           ),
                         ),
@@ -608,6 +704,36 @@ class _EventsTabState extends State<_EventsTab> {
                     },
                   ),
                 ),
+    );
+  }
+}
+
+class _ActionChip extends StatelessWidget {
+  const _ActionChip({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+    this.danger = false,
+  });
+  final IconData icon;
+  final String label;
+  final VoidCallback? onPressed;
+  final bool danger;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = danger ? Colors.red : RoverColors.primary;
+    return TextButton.icon(
+      icon: Icon(icon, size: 14, color: color),
+      label: Text(label,
+          style: GoogleFonts.inter(
+              fontSize: 12, fontWeight: FontWeight.w600, color: color)),
+      style: TextButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        minimumSize: Size.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      onPressed: onPressed,
     );
   }
 }
@@ -655,13 +781,22 @@ class _MembersTabState extends State<_MembersTab> {
     if (_isLoading) return const Center(child: CircularProgressIndicator());
 
     if (_members.isEmpty) {
-      return const Center(
+      return Center(
         child: Padding(
-          padding: EdgeInsets.all(24),
-          child: Text(
-            'No members yet.\nShare the invite link from the Share tab.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.grey, fontSize: 15, height: 1.6),
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.people_outline,
+                  size: 56, color: RoverColors.textSecondary),
+              const SizedBox(height: 12),
+              Text(
+                'No members yet.\nShare the invite link from the Share tab.',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.inter(
+                    color: RoverColors.textSecondary, fontSize: 15, height: 1.6),
+              ),
+            ],
           ),
         ),
       );
@@ -674,19 +809,21 @@ class _MembersTabState extends State<_MembersTab> {
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
         children: [
           if (admins.isNotEmpty) ...[
             _sectionHeader('Administrators', Icons.manage_accounts,
                 Colors.purple),
             ...admins.map((m) => _memberTile(m)),
+            const SizedBox(height: 8),
           ],
           if (drivers.isNotEmpty) ...[
-            _sectionHeader('Drivers', Icons.directions_bus, Colors.blue),
+            _sectionHeader('Drivers', Icons.directions_bus, RoverColors.secondary),
             ...drivers.map((m) => _memberTile(m)),
+            const SizedBox(height: 8),
           ],
           if (users.isNotEmpty) ...[
-            _sectionHeader('Attendees', Icons.people, const Color(0xFF478DE0)),
+            _sectionHeader('Attendees', Icons.people, RoverColors.primary),
             ...users.map((m) => _memberTile(m)),
           ],
         ],
@@ -696,16 +833,17 @@ class _MembersTabState extends State<_MembersTab> {
 
   Widget _sectionHeader(String title, IconData icon, Color color) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 12, 4, 6),
+      padding: const EdgeInsets.fromLTRB(0, 4, 0, 8),
       child: Row(
         children: [
-          Icon(icon, size: 16, color: color),
+          Icon(icon, size: 14, color: color),
           const SizedBox(width: 6),
           Text(title,
-              style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold,
-                  color: color)),
+              style: GoogleFonts.inter(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: color,
+                  letterSpacing: 0.5)),
         ],
       ),
     );
@@ -714,21 +852,40 @@ class _MembersTabState extends State<_MembersTab> {
   Widget _memberTile(Map<String, dynamic> m) {
     final name  = m['full_name'] as String? ?? 'Unknown';
     final phone = m['phone']     as String?;
-    return Card(
-      margin: const EdgeInsets.only(bottom: 6),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 6,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
       child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
         leading: CircleAvatar(
-          backgroundColor: const Color(0xFF73AEF5),
+          backgroundColor: RoverColors.primaryContainer,
           child: Text(
             name.isNotEmpty ? name[0].toUpperCase() : '?',
-            style: const TextStyle(color: Colors.white),
+            style: GoogleFonts.inter(
+                color: RoverColors.primary, fontWeight: FontWeight.w700),
           ),
         ),
-        title: Text(name),
-        subtitle: phone != null ? Text(phone) : null,
+        title: Text(name,
+            style: GoogleFonts.inter(
+                fontSize: 14, fontWeight: FontWeight.w600)),
+        subtitle: phone != null
+            ? Text(phone,
+                style: GoogleFonts.inter(
+                    fontSize: 12, color: RoverColors.textSecondary))
+            : null,
         trailing: phone != null
             ? IconButton(
-                icon: const Icon(Icons.copy, size: 16, color: Colors.grey),
+                icon: Icon(Icons.copy, size: 16, color: RoverColors.textSecondary),
                 tooltip: 'Copy phone',
                 onPressed: () => Clipboard.setData(ClipboardData(text: phone)),
               )
@@ -786,7 +943,6 @@ class _ShareTabState extends State<_ShareTab> {
           _pendingRequests = results[1] as List<Map<String, dynamic>>;
         });
 
-        // M-9: subscribe once; re-subscribe only if org changed
         final orgId = org?['id'] as String?;
         if (orgId != null && _requestsChannel == null) {
           _requestsChannel = OrgService.subscribeToPendingRequests(
@@ -844,8 +1000,8 @@ class _ShareTabState extends State<_ShareTab> {
             onPressed: () => Navigator.of(ctx).pop(false),
             child: const Text('Cancel'),
           ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text('Reset Link',
                 style: TextStyle(color: Colors.white)),
@@ -880,7 +1036,9 @@ class _ShareTabState extends State<_ShareTab> {
             onPressed: () => Navigator.of(ctx).pop(false),
             child: const Text('Cancel'),
           ),
-          ElevatedButton(
+          FilledButton(
+            style: FilledButton.styleFrom(
+                backgroundColor: RoverColors.primary),
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text('Approve'),
           ),
@@ -899,7 +1057,6 @@ class _ShareTabState extends State<_ShareTab> {
     }
   }
 
-  // Fix L-9: added confirmation dialog to match the approve flow.
   Future<void> _rejectRequest(int requestId, String name) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -911,8 +1068,8 @@ class _ShareTabState extends State<_ShareTab> {
             onPressed: () => Navigator.of(ctx).pop(false),
             child: const Text('Cancel'),
           ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text('Reject',
                 style: TextStyle(color: Colors.white)),
@@ -938,9 +1095,9 @@ class _ShareTabState extends State<_ShareTab> {
       return const Center(child: CircularProgressIndicator());
     }
     if (_org == null) {
-      return const Center(
+      return Center(
         child: Text('Could not load organisation.',
-            style: TextStyle(color: Colors.grey)),
+            style: GoogleFonts.inter(color: RoverColors.textSecondary)),
       );
     }
 
@@ -950,104 +1107,104 @@ class _ShareTabState extends State<_ShareTab> {
       onRefresh: _load,
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 24, 16, 40),
+        padding: const EdgeInsets.fromLTRB(20, 24, 20, 40),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // ── Heading ────────────────────────────────────────
-            const Text(
-              'Share with your team',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF2D3748),
+            // Heading
+            Text(
+              'Invite your team',
+              style: GoogleFonts.inter(
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+                color: RoverColors.textPrimary,
               ),
             ),
             const SizedBox(height: 6),
             Text(
               'Anyone with this link can join ${_org!['name']} on Rover.',
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 13, color: Colors.grey),
+              style: GoogleFonts.inter(
+                  fontSize: 13, color: RoverColors.textSecondary),
             ),
-
             const SizedBox(height: 24),
 
-            // ── QR Code ────────────────────────────────────────
+            // QR code card
             if (orgToken.isNotEmpty)
-              Card(
-                elevation: 4,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16)),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: QrImageView(
-                    data: _inviteUrl,
-                    version: QrVersions.auto,
-                    size: 220,
-                    backgroundColor: Colors.white,
-                  ),
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.08),
+                      blurRadius: 20,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                padding: const EdgeInsets.all(20),
+                child: QrImageView(
+                  data: _inviteUrl,
+                  version: QrVersions.auto,
+                  size: 200,
+                  backgroundColor: Colors.white,
                 ),
               ),
+            const SizedBox(height: 20),
 
-            const SizedBox(height: 16),
-
-            // ── Link display ───────────────────────────────────
+            // Link display
             Container(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 14, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
-                color: const Color(0xFFF0F4F8),
+                color: RoverColors.surfaceContainerLow,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFCBD5E0)),
               ),
               child: Row(
                 children: [
                   Expanded(
                     child: Text(
                       _inviteUrl,
-                      style: const TextStyle(
+                      style: GoogleFonts.inter(
                         fontSize: 12,
-                        color: Color(0xFF4A5568),
-                        fontFamily: 'monospace',
+                        color: RoverColors.textSecondary,
+                        fontFeatures: const [FontFeature.tabularFigures()],
                       ),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.copy,
-                        size: 18, color: Color(0xFF478DE0)),
+                    icon: Icon(Icons.copy, size: 18, color: RoverColors.primary),
                     tooltip: 'Copy link',
                     onPressed: _copyLink,
                   ),
                 ],
               ),
             ),
-
             const SizedBox(height: 16),
 
-            // ── Action buttons ─────────────────────────────────
+            // Share button
             SizedBox(
               width: double.infinity,
-              child: ElevatedButton.icon(
+              child: FilledButton.icon(
                 onPressed: _shareLink,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF478DE0),
+                style: FilledButton.styleFrom(
+                  backgroundColor: RoverColors.primary,
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.all(14),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
+                      borderRadius: BorderRadius.circular(14)),
                 ),
                 icon: const Icon(Icons.share),
-                label: const Text('Share Invite Link',
-                    style: TextStyle(
-                        fontSize: 15, fontWeight: FontWeight.bold)),
+                label: Text('Share Invite Link',
+                    style: GoogleFonts.inter(
+                        fontSize: 15, fontWeight: FontWeight.w600)),
               ),
             ),
+            const SizedBox(height: 10),
 
-            const SizedBox(height: 12),
-
-            // ── Reset link ─────────────────────────────────────
+            // Reset link
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
@@ -1055,9 +1212,9 @@ class _ShareTabState extends State<_ShareTab> {
                 style: OutlinedButton.styleFrom(
                   side: const BorderSide(color: Colors.red),
                   foregroundColor: Colors.red,
-                  padding: const EdgeInsets.all(14),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
+                      borderRadius: BorderRadius.circular(14)),
                 ),
                 icon: _isResetting
                     ? const SizedBox(
@@ -1067,35 +1224,32 @@ class _ShareTabState extends State<_ShareTab> {
                             strokeWidth: 2, color: Colors.red),
                       )
                     : const Icon(Icons.refresh),
-                label: const Text('Reset Link (invalidates current QR)',
-                    style: TextStyle(fontSize: 13)),
+                label: Text('Reset Link (invalidates current QR)',
+                    style: GoogleFonts.inter(fontSize: 13)),
               ),
             ),
 
-            const SizedBox(height: 24),
-            const Divider(),
-            const SizedBox(height: 8),
-
-            // ── Pending join requests (search fallback only) ───
-            // Section only visible when requests exist so admins
-            // using QR/link never see an empty placeholder.
+            // Pending join requests
             if (_pendingRequests.isNotEmpty) ...[
+              const SizedBox(height: 28),
+              const Divider(),
+              const SizedBox(height: 12),
               Row(
                 children: [
-                  const Icon(Icons.pending_actions,
-                      size: 16, color: Color(0xFF478DE0)),
+                  Icon(Icons.pending_actions,
+                      size: 16, color: RoverColors.secondary),
                   const SizedBox(width: 6),
                   Text(
                     'Pending Requests (${_pendingRequests.length})',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
+                    style: GoogleFonts.inter(
+                      fontWeight: FontWeight.w700,
                       fontSize: 14,
-                      color: Color(0xFF2D3748),
+                      color: RoverColors.textPrimary,
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
               ...(_pendingRequests.map((req) {
                 final reqId  = req['id'] as int;
                 final profile =
@@ -1106,18 +1260,31 @@ class _ShareTabState extends State<_ShareTab> {
                     ? DateTime.tryParse(req['created_at'] as String)
                     : null;
 
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 8),
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.04),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
                   child: Padding(
                     padding: const EdgeInsets.all(12),
                     child: Row(
                       children: [
                         CircleAvatar(
-                          backgroundColor: const Color(0xFF73AEF5),
+                          backgroundColor: RoverColors.primaryContainer,
                           radius: 20,
                           child: Text(
                             name.isNotEmpty ? name[0].toUpperCase() : '?',
-                            style: const TextStyle(color: Colors.white),
+                            style: GoogleFonts.inter(
+                                color: RoverColors.primary,
+                                fontWeight: FontWeight.w700),
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -1126,44 +1293,48 @@ class _ShareTabState extends State<_ShareTab> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(name,
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.bold)),
+                                  style: GoogleFonts.inter(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 14)),
                               if (phone != null)
                                 Text(phone,
-                                    style: const TextStyle(
-                                        fontSize: 12, color: Colors.grey)),
+                                    style: GoogleFonts.inter(
+                                        fontSize: 12,
+                                        color: RoverColors.textSecondary)),
                               if (date != null)
                                 Text(
                                   'Requested ${date.day}/${date.month}/${date.year}',
-                                  style: const TextStyle(
-                                      fontSize: 11, color: Colors.grey),
+                                  style: GoogleFonts.inter(
+                                      fontSize: 11,
+                                      color: RoverColors.textSecondary),
                                 ),
                             ],
                           ),
                         ),
                         TextButton(
                           style: TextButton.styleFrom(
-                              foregroundColor: Colors.green),
+                              foregroundColor: RoverColors.primary),
                           onPressed: () => _approveRequest(reqId, name),
-                          child: const Text('Approve'),
+                          child: Text('Approve',
+                              style: GoogleFonts.inter(
+                                  fontWeight: FontWeight.w600)),
                         ),
                         TextButton(
                           style: TextButton.styleFrom(
                               foregroundColor: Colors.red),
                           onPressed: () => _rejectRequest(reqId, name),
-                          child: const Text('Reject'),
+                          child: Text('Reject',
+                              style: GoogleFonts.inter(
+                                  fontWeight: FontWeight.w600)),
                         ),
                       ],
                     ),
                   ),
                 );
               })),
-              const SizedBox(height: 16),
-              const Divider(),
-              const SizedBox(height: 8),
             ],
 
-            // ── How it works info ──────────────────────────────
+            const SizedBox(height: 24),
             const _HowItWorksCard(),
           ],
         ),
@@ -1177,38 +1348,40 @@ class _HowItWorksCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      color: const Color(0xFFF7FAFC),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: const [
-            Text(
-              'How it works',
-              style: TextStyle(
-                  fontWeight: FontWeight.bold, color: Color(0xFF2D3748)),
-            ),
-            SizedBox(height: 10),
-            _Step(
-              icon: Icons.share,
-              text: 'Share the link or show the QR code to your team.',
-            ),
-            _Step(
-              icon: Icons.phone_android,
-              text: 'They download Rover, tap their role card, and scan or paste your link.',
-            ),
-            _Step(
-              icon: Icons.check_circle_outline,
-              text: 'They appear in your Members tab instantly.',
-            ),
-            _Step(
-              icon: Icons.refresh,
-              text: 'Reset the link at any time to stop new joins without affecting existing members.',
-            ),
-          ],
-        ),
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: RoverColors.primaryContainer,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'How it works',
+            style: GoogleFonts.inter(
+                fontWeight: FontWeight.w700, color: RoverColors.primary),
+          ),
+          const SizedBox(height: 10),
+          _Step(
+            icon: Icons.share,
+            text: 'Share the link or show the QR code to your team.',
+          ),
+          _Step(
+            icon: Icons.phone_android,
+            text:
+                'They download Rover, tap their role card, and scan or paste your link.',
+          ),
+          _Step(
+            icon: Icons.check_circle_outline,
+            text: 'They appear in your Members tab instantly.',
+          ),
+          _Step(
+            icon: Icons.refresh,
+            text:
+                'Reset the link at any time to stop new joins without affecting existing members.',
+          ),
+        ],
       ),
     );
   }
@@ -1226,12 +1399,13 @@ class _Step extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 16, color: const Color(0xFF478DE0)),
+          Icon(icon, size: 16, color: RoverColors.primary),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
               text,
-              style: const TextStyle(fontSize: 13, color: Colors.grey, height: 1.4),
+              style: GoogleFonts.inter(
+                  fontSize: 13, color: RoverColors.textSecondary, height: 1.4),
             ),
           ),
         ],

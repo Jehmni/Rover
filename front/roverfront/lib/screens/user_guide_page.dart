@@ -5,6 +5,8 @@
 // Accessible via the help (?) icon on every major screen's AppBar.
 
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import '../theme/rover_theme.dart';
 
 class UserGuidePage extends StatefulWidget {
   /// 'admin' | 'driver' | 'user' | null (shows all equally)
@@ -40,28 +42,32 @@ class _UserGuidePageState extends State<UserGuidePage> {
           }).toList();
 
     return Scaffold(
+      backgroundColor: RoverColors.surface,
       appBar: AppBar(
-        title: const Text('Help & Guide'),
-        backgroundColor: const Color(0xFF478DE0),
+        backgroundColor: RoverColors.primary,
         foregroundColor: Colors.white,
+        title: Text(
+          'Help & Guide',
+          style: GoogleFonts.inter(
+              fontSize: 18, fontWeight: FontWeight.w700, color: Colors.white),
+        ),
       ),
       body: Column(
         children: [
           // ── Search bar ────────────────────────────────────
           Container(
-            color: const Color(0xFF478DE0),
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            color: RoverColors.primary,
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
             child: TextField(
               controller: _searchCtrl,
-              style: const TextStyle(color: Colors.white),
+              style: GoogleFonts.inter(
+                  fontSize: 14, color: RoverColors.textPrimary),
               decoration: InputDecoration(
                 hintText: 'Search the guide…',
-                hintStyle: const TextStyle(color: Colors.white60),
-                prefixIcon:
-                    const Icon(Icons.search, color: Colors.white70),
+                prefixIcon: const Icon(Icons.search, size: 20),
                 suffixIcon: _search.isNotEmpty
                     ? IconButton(
-                        icon: const Icon(Icons.clear, color: Colors.white70),
+                        icon: const Icon(Icons.close, size: 18),
                         onPressed: () {
                           _searchCtrl.clear();
                           setState(() => _search = '');
@@ -69,9 +75,13 @@ class _UserGuidePageState extends State<UserGuidePage> {
                       )
                     : null,
                 filled: true,
-                fillColor: Colors.white24,
+                fillColor: Colors.white,
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(30),
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide.none,
                 ),
                 contentPadding: const EdgeInsets.symmetric(vertical: 0),
@@ -84,19 +94,19 @@ class _UserGuidePageState extends State<UserGuidePage> {
           if (widget.role != null && _search.isEmpty)
             Container(
               width: double.infinity,
-              color: const Color(0xFFE8F4FD),
+              color: RoverColors.primaryContainer,
               padding:
                   const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Row(
                 children: [
                   Icon(_roleIcon(widget.role!),
-                      size: 16, color: const Color(0xFF478DE0)),
+                      size: 14, color: RoverColors.primary),
                   const SizedBox(width: 6),
                   Text(
                     'Showing guide for: ${_roleLabel(widget.role!)}',
-                    style: const TextStyle(
+                    style: GoogleFonts.inter(
                       fontSize: 12,
-                      color: Color(0xFF478DE0),
+                      color: RoverColors.primary,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -107,18 +117,19 @@ class _UserGuidePageState extends State<UserGuidePage> {
           // ── Sections ──────────────────────────────────────
           Expanded(
             child: filtered.isEmpty
-                ? const Center(
+                ? Center(
                     child: Padding(
-                      padding: EdgeInsets.all(32),
+                      padding: const EdgeInsets.all(32),
                       child: Text(
                         'No results found.\nTry different keywords.',
                         textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.grey),
+                        style: GoogleFonts.inter(
+                            color: RoverColors.textSecondary),
                       ),
                     ),
                   )
                 : ListView.builder(
-                    padding: const EdgeInsets.only(bottom: 32),
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
                     itemCount: filtered.length,
                     itemBuilder: (context, i) =>
                         _SectionCard(section: filtered[i], search: _search),
@@ -136,7 +147,7 @@ class _UserGuidePageState extends State<UserGuidePage> {
       _Section(
         icon: Icons.rocket_launch_rounded,
         title: 'Getting Started',
-        color: const Color(0xFF478DE0),
+        color: RoverColors.primary,
         initiallyExpanded: role == null,
         items: [
           _Item(
@@ -238,7 +249,7 @@ class _UserGuidePageState extends State<UserGuidePage> {
       _Section(
         icon: Icons.directions_bus_rounded,
         title: 'For Drivers',
-        color: Colors.green,
+        color: RoverColors.primary,
         initiallyExpanded: role == 'driver',
         items: [
           _Item(
@@ -295,7 +306,7 @@ class _UserGuidePageState extends State<UserGuidePage> {
       _Section(
         icon: Icons.people_rounded,
         title: 'For Attendees',
-        color: const Color(0xFF478DE0),
+        color: RoverColors.primary,
         initiallyExpanded: role == 'user',
         items: [
           _Item(
@@ -397,7 +408,7 @@ class _UserGuidePageState extends State<UserGuidePage> {
       _Section(
         icon: Icons.manage_accounts_rounded,
         title: 'Account & Sign In',
-        color: Colors.orange,
+        color: RoverColors.secondary,
         initiallyExpanded: false,
         items: [
           _Item(
@@ -453,7 +464,7 @@ class _UserGuidePageState extends State<UserGuidePage> {
       _Section(
         icon: Icons.build_rounded,
         title: 'Troubleshooting',
-        color: Colors.grey,
+        color: RoverColors.textSecondary,
         initiallyExpanded: false,
         items: [
           _Item(
@@ -564,30 +575,43 @@ class _SectionCard extends StatelessWidget {
 
     if (items.isEmpty) return const SizedBox.shrink();
 
-    return Card(
-      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      elevation: 2,
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
       child: Theme(
         data: Theme.of(context).copyWith(
           dividerColor: Colors.transparent,
         ),
         child: ExpansionTile(
           initiallyExpanded: section.initiallyExpanded || search.isNotEmpty,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16)),
+          collapsedShape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16)),
           leading: Container(
             width: 36,
             height: 36,
             decoration: BoxDecoration(
               color: section.color.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(section.icon, color: section.color, size: 20),
           ),
           title: Text(
             section.title,
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 15,
+            style: GoogleFonts.inter(
+              fontWeight: FontWeight.w700,
+              fontSize: 14,
               color: section.color,
             ),
           ),
@@ -614,25 +638,28 @@ class _GuideItem extends StatelessWidget {
       tilePadding: const EdgeInsets.symmetric(horizontal: 20),
       childrenPadding:
           const EdgeInsets.fromLTRB(20, 0, 20, 16),
-      leading: const Icon(Icons.help_outline, size: 18, color: Colors.grey),
+      leading: Icon(Icons.help_outline,
+          size: 18, color: RoverColors.textSecondary),
       title: Text(
         item.question,
-        style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
+        style: GoogleFonts.inter(
+            fontSize: 13, fontWeight: FontWeight.w600,
+            color: RoverColors.textPrimary),
       ),
       children: [
         Container(
           width: double.infinity,
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: const Color(0xFFF5F8FF),
-            borderRadius: BorderRadius.circular(8),
+            color: RoverColors.surface,
+            borderRadius: BorderRadius.circular(10),
           ),
           child: Text(
             item.answer,
-            style: const TextStyle(
+            style: GoogleFonts.inter(
               fontSize: 13,
               height: 1.6,
-              color: Color(0xFF444444),
+              color: RoverColors.textSecondary,
             ),
           ),
         ),

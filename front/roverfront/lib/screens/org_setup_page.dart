@@ -17,10 +17,11 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
-import '../constants.dart';
 import '../services/auth_service.dart';
 import '../services/org_service.dart';
+import '../theme/rover_theme.dart';
 import '../widgets/auth_dialog.dart';
 import 'admin_home_page.dart';
 import 'driver_home_page.dart';
@@ -74,123 +75,102 @@ class _OrgSetupPageState extends State<OrgSetupPage>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: RoverColors.surface,
       body: AnnotatedRegion<SystemUiOverlayStyle>(
-        value: SystemUiOverlayStyle.light,
-        child: Container(
-          height: double.infinity,
-          width: double.infinity,
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                Color(0xFF73AEF5),
-                Color(0xFF61A4F1),
-                Color(0xFF478DE0),
-                Color(0xFF398AE5),
-              ],
-              stops: [0.1, 0.4, 0.7, 0.9],
-            ),
-          ),
-          child: SafeArea(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // ── Header ──────────────────────────────────────────
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 16, 16, 0),
-                  child: Row(
-                    children: [
-                      const Expanded(
-                        child: Text(
-                          'Organisation Setup',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontFamily: 'OpenSans',
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
+        value: SystemUiOverlayStyle.dark,
+        child: SafeArea(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── Header ──────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 12, 0),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Rover',
+                            style: GoogleFonts.inter(
+                              fontSize: 28,
+                              fontWeight: FontWeight.w800,
+                              color: RoverColors.primary,
+                              height: 1,
+                            ),
                           ),
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.help_outline,
-                            color: Colors.white70, size: 20),
-                        tooltip: 'Help',
-                        onPressed: () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const UserGuidePage(),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Link your account to get started.',
+                            style: GoogleFonts.inter(
+                              fontSize: 13,
+                              color: RoverColors.textSecondary,
+                            ),
                           ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.help_outline),
+                      color: RoverColors.textSecondary,
+                      tooltip: 'Help',
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const UserGuidePage(),
                         ),
                       ),
-                      TextButton(
-                        onPressed: _logout,
-                        child: const Text(
-                          'Sign Out',
-                          style: TextStyle(
-                              color: Colors.white70, fontSize: 13),
+                    ),
+                    TextButton(
+                      onPressed: _logout,
+                      child: Text(
+                        'Sign Out',
+                        style: GoogleFonts.inter(
+                          fontSize: 13,
+                          color: RoverColors.textSecondary,
                         ),
                       ),
-                    ],
-                  ),
-                ),
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(24, 6, 24, 0),
-                  child: Text(
-                    'Link your account to your organisation to continue.',
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontFamily: 'OpenSans',
-                      fontSize: 13,
-                      height: 1.5,
                     ),
-                  ),
+                  ],
                 ),
-                const SizedBox(height: 16),
-                // ── Tabs ────────────────────────────────────────────
-                Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 24),
-                  decoration: BoxDecoration(
-                    color: Colors.white12,
-                    borderRadius: BorderRadius.circular(30),
-                  ),
-                  child: TabBar(
-                    controller: _tabController,
-                    indicator: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(30),
+              ),
+              const SizedBox(height: 16),
+
+              // ── Tabs ────────────────────────────────────────────
+              TabBar(
+                controller: _tabController,
+                indicatorColor: RoverColors.primary,
+                indicatorWeight: 2,
+                labelColor: RoverColors.primary,
+                unselectedLabelColor: RoverColors.textSecondary,
+                labelStyle: GoogleFonts.inter(
+                    fontSize: 13, fontWeight: FontWeight.w700),
+                unselectedLabelStyle:
+                    GoogleFonts.inter(fontSize: 13),
+                tabs: const [
+                  Tab(text: 'Create Organisation'),
+                  Tab(text: 'Join Organisation'),
+                ],
+              ),
+              const Divider(height: 1),
+
+              // ── Tab Views ────────────────────────────────────────
+              Expanded(
+                child: TabBarView(
+                  controller: _tabController,
+                  children: [
+                    const _CreateOrgTab(),
+                    _JoinOrgTab(
+                      initialToken: widget.orgToken,
+                      orgName:      widget.orgName,
+                      role:         widget.initialRole == 'admin'
+                                        ? 'user'
+                                        : widget.initialRole,
                     ),
-                    labelColor: const Color(0xFF478DE0),
-                    unselectedLabelColor: Colors.white,
-                    labelStyle: const TextStyle(
-                      fontFamily: 'OpenSans',
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
-                    ),
-                    tabs: const [
-                      Tab(text: 'Create Organisation'),
-                      Tab(text: 'Join Organisation'),
-                    ],
-                  ),
+                  ],
                 ),
-                const SizedBox(height: 8),
-                // ── Tab Views ────────────────────────────────────────
-                Expanded(
-                  child: TabBarView(
-                    controller: _tabController,
-                    children: [
-                      const _CreateOrgTab(),
-                      _JoinOrgTab(
-                        initialToken: widget.orgToken,
-                        orgName:      widget.orgName,
-                        role:         widget.initialRole == 'admin'
-                                          ? 'user'
-                                          : widget.initialRole,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
@@ -260,88 +240,105 @@ class _CreateOrgTabState extends State<_CreateOrgTab> {
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 40),
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 40),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'You will become the admin for this organisation.',
-            style: TextStyle(
-              color: Colors.white70,
-              fontFamily: 'OpenSans',
-              fontSize: 12,
+            style: GoogleFonts.inter(
+              fontSize: 13,
+              color: RoverColors.textSecondary,
               height: 1.5,
             ),
           ),
-          const SizedBox(height: 20),
-          _field(
+          const SizedBox(height: 24),
+
+          _label('Organisation Name *'),
+          const SizedBox(height: 6),
+          TextField(
             controller: _nameCtrl,
-            label: 'Organisation Name *',
-            hint: "e.g. St. Mary's Church",
-            icon: Icons.business,
-          ),
-          _field(
-            controller: _cityCtrl,
-            label: 'City (optional)',
-            hint: 'e.g. Manchester',
-            icon: Icons.location_city,
-          ),
-          _field(
-            controller: _countryCtrl,
-            label: 'Country (optional)',
-            hint: 'e.g. United Kingdom',
-            icon: Icons.flag,
-          ),
-          Text('Organisation Type', style: kLabelStyle),
-          const SizedBox(height: 10),
-          Container(
-            decoration: kBoxDecorationStyle,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<String>(
-                value: _orgType,
-                dropdownColor: const Color(0xFF478DE0),
-                isExpanded: true,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontFamily: 'OpenSans',
-                  fontSize: 16,
-                ),
-                items: _orgTypes
-                    .map((t) => DropdownMenuItem(
-                          value: t,
-                          child: Text(t[0].toUpperCase() + t.substring(1)),
-                        ))
-                    .toList(),
-                onChanged: (v) {
-                  if (v != null) setState(() => _orgType = v);
-                },
-              ),
+            style: GoogleFonts.inter(
+                fontSize: 15, color: RoverColors.textPrimary),
+            decoration: InputDecoration(
+              hintText: "e.g. St. Mary's Church",
+              prefixIcon: const Icon(Icons.business_outlined, size: 20),
             ),
           ),
-          const SizedBox(height: 30),
+          const SizedBox(height: 16),
+
+          _label('City (optional)'),
+          const SizedBox(height: 6),
+          TextField(
+            controller: _cityCtrl,
+            style: GoogleFonts.inter(
+                fontSize: 15, color: RoverColors.textPrimary),
+            decoration: InputDecoration(
+              hintText: 'e.g. Manchester',
+              prefixIcon: const Icon(Icons.location_city_outlined, size: 20),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          _label('Country (optional)'),
+          const SizedBox(height: 6),
+          TextField(
+            controller: _countryCtrl,
+            style: GoogleFonts.inter(
+                fontSize: 15, color: RoverColors.textPrimary),
+            decoration: InputDecoration(
+              hintText: 'e.g. United Kingdom',
+              prefixIcon: const Icon(Icons.flag_outlined, size: 20),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          _label('Organisation Type'),
+          const SizedBox(height: 6),
+          DropdownButtonFormField<String>(
+            initialValue: _orgType,
+            decoration: InputDecoration(
+              prefixIcon: const Icon(Icons.category_outlined, size: 20),
+            ),
+            items: _orgTypes
+                .map((t) => DropdownMenuItem(
+                      value: t,
+                      child: Text(
+                        t[0].toUpperCase() + t.substring(1),
+                        style: GoogleFonts.inter(
+                            fontSize: 15, color: RoverColors.textPrimary),
+                      ),
+                    ))
+                .toList(),
+            onChanged: (v) {
+              if (v != null) setState(() => _orgType = v);
+            },
+          ),
+          const SizedBox(height: 32),
+
           SizedBox(
             width: double.infinity,
-            child: ElevatedButton(
+            child: FilledButton(
               onPressed: _isLoading ? null : _handleCreate,
-              style: ElevatedButton.styleFrom(
-                elevation: 5,
-                padding: const EdgeInsets.all(15),
+              style: FilledButton.styleFrom(
+                backgroundColor: RoverColors.primary,
+                padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(30),
-                ),
+                    borderRadius: BorderRadius.circular(14)),
               ),
               child: _isLoading
-                  ? const CircularProgressIndicator(
-                      color: Color(0xFF527DAA))
-                  : const Text(
-                      'CREATE ORGANISATION',
-                      style: TextStyle(
-                        color: Color(0xFF527DAA),
-                        letterSpacing: 1.5,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        fontFamily: 'OpenSans',
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white),
+                    )
+                  : Text(
+                      'Create Organisation',
+                      style: GoogleFonts.inter(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
                       ),
                     ),
             ),
@@ -351,38 +348,14 @@ class _CreateOrgTabState extends State<_CreateOrgTab> {
     );
   }
 
-  Widget _field({
-    required TextEditingController controller,
-    required String label,
-    required String hint,
-    required IconData icon,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: kLabelStyle),
-        const SizedBox(height: 10),
-        Container(
-          alignment: Alignment.centerLeft,
-          decoration: kBoxDecorationStyle,
-          height: 60,
-          child: TextField(
-            controller: controller,
-            style: const TextStyle(
-                color: Colors.white, fontFamily: 'OpenSans'),
-            decoration: InputDecoration(
-              border: InputBorder.none,
-              contentPadding: const EdgeInsets.only(top: 14),
-              prefixIcon: Icon(icon, color: Colors.white),
-              hintText: hint,
-              hintStyle: kHintTextStyle,
-            ),
-          ),
+  Widget _label(String text) => Text(
+        text,
+        style: GoogleFonts.inter(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: RoverColors.textSecondary,
         ),
-        const SizedBox(height: 20),
-      ],
-    );
-  }
+      );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -439,7 +412,6 @@ class _JoinOrgTabState extends State<_JoinOrgTab> {
     }
 
     // Validate the resolved token is UUID-shaped before hitting the RPC.
-    // This gives a clear message for random QR codes or malformed links.
     final uuidPattern = RegExp(
       r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
       caseSensitive: false,
@@ -506,174 +478,155 @@ class _JoinOrgTabState extends State<_JoinOrgTab> {
     }
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 40),
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 40),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Org banner from deep link ────────────────────────
-          if (widget.orgName != null)
+          // Org banner from deep link
+          if (widget.orgName != null) ...[
             Container(
               width: double.infinity,
-              margin: const EdgeInsets.only(bottom: 16),
               padding: const EdgeInsets.symmetric(
-                  horizontal: 16, vertical: 10),
+                  horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
-                color: Colors.white24,
+                color: RoverColors.primaryContainer,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.business,
-                      color: Colors.white70, size: 14),
+                  Icon(Icons.business, color: RoverColors.primary, size: 16),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       'Joining: ${widget.orgName}',
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: GoogleFonts.inter(
                         fontSize: 13,
-                        fontFamily: 'OpenSans',
+                        fontWeight: FontWeight.w600,
+                        color: RoverColors.primary,
                       ),
                     ),
                   ),
                 ],
               ),
-            )
-          else
-            const Text(
-              'Your administrator will share an invite link or QR code '
-              'with you. Scan it or paste the link below.',
-              style: TextStyle(
-                color: Colors.white70,
-                fontFamily: 'OpenSans',
-                fontSize: 12,
+            ),
+            const SizedBox(height: 20),
+          ] else ...[
+            Text(
+              'Your administrator will share an invite link or QR code with you. '
+              'Scan it or paste the link below.',
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                color: RoverColors.textSecondary,
                 height: 1.5,
               ),
             ),
+            const SizedBox(height: 24),
+          ],
 
-          const SizedBox(height: 20),
-
-          // ── QR scan button ───────────────────────────────────
+          // QR scan button
           SizedBox(
             width: double.infinity,
-            child: ElevatedButton.icon(
+            child: OutlinedButton.icon(
               onPressed: _startScanning,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: const Color(0xFF478DE0),
-                padding: const EdgeInsets.all(15),
+              style: OutlinedButton.styleFrom(
+                side: BorderSide(color: RoverColors.primary, width: 1.5),
+                foregroundColor: RoverColors.primary,
+                padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(30),
-                ),
-                elevation: 3,
+                    borderRadius: BorderRadius.circular(14)),
               ),
               icon: const Icon(Icons.qr_code_scanner, size: 22),
-              label: const Text(
-                'SCAN QR CODE',
-                style: TextStyle(
-                  fontFamily: 'OpenSans',
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1.2,
-                  fontSize: 16,
+              label: Text(
+                'Scan QR Code',
+                style: GoogleFonts.inter(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ),
           ),
-
           const SizedBox(height: 20),
+
+          // Divider
           Row(
-            children: const [
-              Expanded(
-                  child:
-                      Divider(color: Colors.white54, thickness: 0.8)),
+            children: [
+              const Expanded(child: Divider()),
               Padding(
-                padding: EdgeInsets.symmetric(horizontal: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Text(
-                  'OR PASTE LINK',
-                  style: TextStyle(
-                    color: Colors.white54,
-                    fontSize: 11,
-                    letterSpacing: 1.2,
-                  ),
+                  'or paste link',
+                  style: GoogleFonts.inter(
+                      fontSize: 12, color: RoverColors.textSecondary),
                 ),
               ),
-              Expanded(
-                  child:
-                      Divider(color: Colors.white54, thickness: 0.8)),
+              const Expanded(child: Divider()),
             ],
           ),
           const SizedBox(height: 20),
 
-          // ── Token / URL text field ───────────────────────────
-          Text('Invite Link', style: kLabelStyle),
-          const SizedBox(height: 10),
-          Container(
-            alignment: Alignment.centerLeft,
-            decoration: kBoxDecorationStyle,
-            child: TextField(
-              controller: _tokenCtrl,
-              style: const TextStyle(
-                  color: Colors.white, fontFamily: 'OpenSans'),
-              onSubmitted: (_) => _handleJoin(),
-              decoration: const InputDecoration(
-                border: InputBorder.none,
-                contentPadding:
-                    EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-                prefixIcon:
-                    Icon(Icons.link, color: Colors.white),
-                hintText: 'rover.app/join/…',
-                hintStyle: TextStyle(
-                  color: Colors.white38,
-                  fontFamily: 'OpenSans',
-                  fontSize: 14,
-                ),
-              ),
+          // Token / URL text field
+          Text(
+            'Invite Link',
+            style: GoogleFonts.inter(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: RoverColors.textSecondary,
             ),
           ),
+          const SizedBox(height: 6),
+          TextField(
+            controller: _tokenCtrl,
+            style: GoogleFonts.inter(
+                fontSize: 15, color: RoverColors.textPrimary),
+            onSubmitted: (_) => _handleJoin(),
+            decoration: InputDecoration(
+              hintText: 'rover.app/join/…',
+              prefixIcon: const Icon(Icons.link, size: 20),
+            ),
+          ),
+          const SizedBox(height: 28),
 
-          const SizedBox(height: 30),
           SizedBox(
             width: double.infinity,
-            child: ElevatedButton(
+            child: FilledButton(
               onPressed: _isLoading ? null : _handleJoin,
-              style: ElevatedButton.styleFrom(
-                elevation: 5,
-                padding: const EdgeInsets.all(15),
+              style: FilledButton.styleFrom(
+                backgroundColor: RoverColors.primary,
+                padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(30),
-                ),
+                    borderRadius: BorderRadius.circular(14)),
               ),
               child: _isLoading
-                  ? const CircularProgressIndicator(
-                      color: Color(0xFF527DAA))
-                  : const Text(
-                      'JOIN ORGANISATION',
-                      style: TextStyle(
-                        color: Color(0xFF527DAA),
-                        letterSpacing: 1.5,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        fontFamily: 'OpenSans',
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white),
+                    )
+                  : Text(
+                      'Join Organisation',
+                      style: GoogleFonts.inter(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
                       ),
                     ),
             ),
           ),
-
           const SizedBox(height: 24),
 
-          // ── Search fallback — deprioritised small text link ──
+          // Search fallback
           Center(
             child: TextButton(
               onPressed: () => _showSearchDialog(context, widget.role),
-              child: const Text(
+              child: Text(
                 "Can't find your link? Search for your organisation",
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Colors.white60,
+                style: GoogleFonts.inter(
                   fontSize: 12,
-                  fontFamily: 'OpenSans',
+                  color: RoverColors.textSecondary,
                   decoration: TextDecoration.underline,
-                  decorationColor: Colors.white60,
+                  decorationColor: RoverColors.textSecondary,
                 ),
               ),
             ),
@@ -753,7 +706,8 @@ class _OrgSearchDialogState extends State<_OrgSearchDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Search Organisations'),
+      title: Text('Search Organisations',
+          style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
       content: SizedBox(
         width: double.maxFinite,
         child: Column(
@@ -765,7 +719,6 @@ class _OrgSearchDialogState extends State<_OrgSearchDialog> {
                 prefixIcon: Icon(Icons.search),
                 hintText: 'Name or city…',
                 isDense: true,
-                border: OutlineInputBorder(),
               ),
               onChanged: _search,
             ),
@@ -773,13 +726,14 @@ class _OrgSearchDialogState extends State<_OrgSearchDialog> {
             if (_isSearching)
               const Center(child: CircularProgressIndicator())
             else if (_searchError)
-              const Text(
+              Text(
                 'Search failed — check your connection and try again.',
-                style: TextStyle(color: Colors.red, fontSize: 13),
+                style: GoogleFonts.inter(color: Colors.red, fontSize: 13),
               )
             else if (_results.isEmpty && _searchCtrl.text.isNotEmpty)
-              const Text('No results. Try a different name or city.',
-                  style: TextStyle(color: Colors.grey, fontSize: 13))
+              Text('No results. Try a different name or city.',
+                  style: GoogleFonts.inter(
+                      color: RoverColors.textSecondary, fontSize: 13))
             else
               ConstrainedBox(
                 constraints: const BoxConstraints(maxHeight: 240),
@@ -795,11 +749,15 @@ class _OrgSearchDialogState extends State<_OrgSearchDialog> {
 
                     return ListTile(
                       dense: true,
-                      title: Text(name),
-                      subtitle: city != null ? Text(city) : null,
+                      title: Text(name,
+                          style: GoogleFonts.inter(fontSize: 14)),
+                      subtitle: city != null
+                          ? Text(city,
+                              style: GoogleFonts.inter(fontSize: 12))
+                          : null,
                       trailing: sent
-                          ? const Icon(Icons.check_circle,
-                              color: Colors.green)
+                          ? Icon(Icons.check_circle,
+                              color: RoverColors.primary)
                           : TextButton(
                               onPressed: _isRequesting
                                   ? null
@@ -815,14 +773,14 @@ class _OrgSearchDialogState extends State<_OrgSearchDialog> {
                 margin: const EdgeInsets.only(top: 12),
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.green[50],
+                  color: RoverColors.primaryContainer,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.green),
                 ),
-                child: const Text(
+                child: Text(
                   'Request sent. Your administrator will be notified '
                   'and can approve you from the Share tab.',
-                  style: TextStyle(fontSize: 12, color: Colors.green),
+                  style: GoogleFonts.inter(
+                      fontSize: 12, color: RoverColors.primary),
                 ),
               ),
           ],
@@ -899,7 +857,6 @@ class _QrScanOverlayState extends State<_QrScanOverlay> {
                 color: Colors.white,
                 backgroundColor: Colors.black45,
                 fontSize: 14,
-                fontFamily: 'OpenSans',
               ),
             ),
           ),
