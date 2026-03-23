@@ -10,9 +10,9 @@
 //   orgName  — resolved org name (shown in banner if arriving via link)
 
 import 'package:flutter/material.dart';
-import '../constants.dart';
 import '../main.dart' show PendingLink;
 import '../services/auth_service.dart';
+import '../theme/rover_theme.dart';
 import '../widgets/auth_dialog.dart';
 import 'org_setup_page.dart';
 
@@ -43,7 +43,8 @@ class _RegisterPageState extends State<RegisterPage> {
   final _passwordController = TextEditingController();
   final _nameController     = TextEditingController();
   final _phoneController    = TextEditingController();
-  bool _isLoading = false;
+  bool _isLoading    = false;
+  bool _obscurePass  = true;
 
   @override
   void dispose() {
@@ -115,213 +116,163 @@ class _RegisterPageState extends State<RegisterPage> {
     }
   }
 
-  Widget _buildTextField({
-    required TextEditingController controller,
-    required String label,
-    required String hint,
-    required IconData icon,
-    bool obscure = false,
-    TextInputType keyboardType = TextInputType.text,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: kLabelStyle),
-        const SizedBox(height: 10),
-        Container(
-          alignment: Alignment.centerLeft,
-          decoration: kBoxDecorationStyle,
-          height: 60,
-          child: TextField(
-            controller: controller,
-            obscureText: obscure,
-            keyboardType: keyboardType,
-            style: const TextStyle(color: Colors.white, fontFamily: 'OpenSans'),
-            decoration: InputDecoration(
-              border: InputBorder.none,
-              contentPadding: const EdgeInsets.only(top: 14),
-              prefixIcon: Icon(icon, color: Colors.white),
-              hintText: hint,
-              hintStyle: kHintTextStyle,
-            ),
-          ),
-        ),
-        const SizedBox(height: 20),
-      ],
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Container(
-        height: double.infinity,
-        width: double.infinity,
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFF73AEF5),
-              Color(0xFF61A4F1),
-              Color(0xFF478DE0),
-              Color(0xFF398AE5),
-            ],
-            stops: [0.1, 0.4, 0.7, 0.9],
-          ),
-        ),
+      backgroundColor: RoverColors.surfaceContainerLowest,
+      body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 80),
+          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 48),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              // ── Headline ─────────────────────────────────────────────
+              Text(
                 'Create Account',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontFamily: 'OpenSans',
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: RoverText.headlineLg(color: RoverColors.primary),
               ),
               const SizedBox(height: 8),
 
-              // ── Org banner (deep-link context) ──────────────────────
+              // ── Subtitle / org banner ─────────────────────────────────
               if (widget.orgToken != null)
                 Container(
                   width: double.infinity,
-                  margin: const EdgeInsets.only(bottom: 16),
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 10),
+                  margin: const EdgeInsets.only(bottom: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   decoration: BoxDecoration(
-                    color: Colors.white24,
-                    borderRadius: BorderRadius.circular(12),
+                    color: RoverColors.primaryContainer,
+                    borderRadius: BorderRadius.circular(10),
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.link,
-                          color: Colors.white70, size: 14),
+                      const Icon(Icons.link_rounded,
+                          color: RoverColors.primary, size: 16),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
                           widget.orgName != null
                               ? 'Joining: ${widget.orgName}'
                               : 'You will join an organisation on the next step.',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontFamily: 'OpenSans',
-                          ),
+                          style: RoverText.bodySm(color: RoverColors.primary),
                         ),
                       ),
                     ],
                   ),
                 )
               else
-                const Text(
+                Text(
                   'You will link your organisation on the next step.',
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontFamily: 'OpenSans',
-                    fontSize: 13,
-                  ),
+                  style: RoverText.bodyMd(color: RoverColors.textSecondary),
                 ),
 
-              const SizedBox(height: 30),
-              _buildTextField(
+              const SizedBox(height: 32),
+
+              // ── Full Name ─────────────────────────────────────────────
+              TextField(
                 controller: _nameController,
-                label: 'Full Name',
-                hint: 'Enter your full name',
-                icon: Icons.person,
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(labelText: 'Full Name'),
               ),
-              _buildTextField(
+              const SizedBox(height: 16),
+
+              // ── Email ─────────────────────────────────────────────────
+              TextField(
                 controller: _emailController,
-                label: 'Email',
-                hint: 'Enter your email',
-                icon: Icons.email,
                 keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(labelText: 'Email'),
               ),
-              _buildTextField(
+              const SizedBox(height: 16),
+
+              // ── Password ──────────────────────────────────────────────
+              TextField(
                 controller: _passwordController,
-                label: 'Password',
-                hint: 'At least 8 characters',
-                icon: Icons.lock,
-                obscure: true,
-              ),
-              _buildTextField(
-                controller: _phoneController,
-                label: 'Phone (optional)',
-                hint: '+1 555 000 0000',
-                icon: Icons.phone,
-                keyboardType: TextInputType.phone,
-              ),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _isLoading ? null : _handleRegister,
-                  style: ElevatedButton.styleFrom(
-                    elevation: 5,
-                    padding: const EdgeInsets.all(15),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(30),
+                obscureText: _obscurePass,
+                decoration: InputDecoration(
+                  labelText: 'Password',
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _obscurePass ? Icons.visibility_off : Icons.visibility,
+                      color: RoverColors.outline,
                     ),
+                    onPressed: () =>
+                        setState(() => _obscurePass = !_obscurePass),
                   ),
-                  child: _isLoading
-                      ? const CircularProgressIndicator(
-                          color: Color(0xFF527DAA))
-                      : const Text(
-                          'CREATE ACCOUNT',
-                          style: TextStyle(
-                            color: Color(0xFF527DAA),
-                            letterSpacing: 1.5,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            fontFamily: 'OpenSans',
-                          ),
-                        ),
                 ),
               ),
               const SizedBox(height: 16),
-              Row(
-                children: const [
-                  Expanded(
-                      child: Divider(color: Colors.white54, thickness: 0.8)),
-                  Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 12),
-                    child: Text(
-                      'HAVE AN ACCOUNT?',
-                      style: TextStyle(
-                        color: Colors.white54,
-                        fontSize: 12,
-                        letterSpacing: 1.2,
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                      child: Divider(color: Colors.white54, thickness: 0.8)),
-                ],
+
+              // ── Phone (optional) ──────────────────────────────────────
+              TextField(
+                controller: _phoneController,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(
+                  labelText: 'Phone (optional)',
+                ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 32),
+
+              // ── Primary CTA ───────────────────────────────────────────
               SizedBox(
                 width: double.infinity,
-                child: OutlinedButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: Colors.white, width: 2),
-                    padding: const EdgeInsets.all(15),
+                height: 56,
+                child: FilledButton(
+                  onPressed: _isLoading ? null : _handleRegister,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: RoverColors.primary,
+                    foregroundColor: RoverColors.onPrimary,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(30),
                     ),
+                    textStyle: RoverText.titleSm(color: RoverColors.onPrimary)
+                        .copyWith(letterSpacing: 1.2),
                   ),
-                  child: const Text(
-                    'SIGN IN',
-                    style: TextStyle(
-                      color: Colors.white,
-                      letterSpacing: 1.5,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      fontFamily: 'OpenSans',
+                  child: _isLoading
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            color: RoverColors.onPrimary,
+                          ),
+                        )
+                      : const Text('CREATE ACCOUNT'),
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // ── "Have an account?" divider ────────────────────────────
+              Row(
+                children: [
+                  const Expanded(child: Divider()),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Text(
+                      'HAVE AN ACCOUNT?',
+                      style: RoverText.labelSm(color: RoverColors.textSecondary),
                     ),
                   ),
+                  const Expanded(child: Divider()),
+                ],
+              ),
+              const SizedBox(height: 24),
+
+              // ── Sign in link ──────────────────────────────────────────
+              SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: OutlinedButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: RoverColors.primary,
+                    side: const BorderSide(
+                        color: RoverColors.primary, width: 1.5),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                    textStyle: RoverText.titleSm(color: RoverColors.primary)
+                        .copyWith(letterSpacing: 1.2),
+                  ),
+                  child: const Text('SIGN IN'),
                 ),
               ),
             ],
