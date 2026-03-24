@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../constants.dart';
 import '../main.dart';
+import '../theme/rover_theme.dart';
 import '../widgets/auth_dialog.dart';
 
 class ForgotPasswordPage extends StatefulWidget {
@@ -55,30 +54,14 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     }
   }
 
-  static const _gradient = BoxDecoration(
-    gradient: LinearGradient(
-      begin: Alignment.topCenter,
-      end: Alignment.bottomCenter,
-      colors: [Color(0xFF73AEF5), Color(0xFF61A4F1), Color(0xFF478DE0), Color(0xFF398AE5)],
-      stops: [0.1, 0.4, 0.7, 0.9],
-    ),
-  );
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: AnnotatedRegion<SystemUiOverlayStyle>(
-        value: SystemUiOverlayStyle.light,
-        child: Stack(
-          children: [
-            Container(height: double.infinity, width: double.infinity, decoration: _gradient),
-            SafeArea(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 40),
-                child: _emailSent ? _buildSuccessState() : _buildFormState(),
-              ),
-            ),
-          ],
+      backgroundColor: RoverColors.surfaceContainerLowest,
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 48),
+          child: _emailSent ? _buildSuccessState() : _buildFormState(),
         ),
       ),
     );
@@ -88,87 +71,79 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        GestureDetector(
-          onTap: () => Navigator.of(context).pop(),
-          child: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 22),
+        // ── Back ──────────────────────────────────────────────────
+        IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new, color: RoverColors.onSurface),
+          onPressed: () => Navigator.of(context).pop(),
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(),
         ),
-        const SizedBox(height: 40),
-        const Text(
-          'Forgot Password?',
-          style: TextStyle(
-            color: Colors.white,
-            fontFamily: 'OpenSans',
-            fontSize: 28,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 14),
-        const Text(
-          'Enter the email linked to your account. We\'ll send you a link to reset your password.',
-          style: TextStyle(
-            color: Colors.white70,
-            fontFamily: 'OpenSans',
-            fontSize: 14,
-            height: 1.6,
-          ),
-        ),
-        const SizedBox(height: 40),
-        const Text('Email', style: kLabelStyle),
-        const SizedBox(height: 10),
+        const SizedBox(height: 32),
+
+        // ── Icon ──────────────────────────────────────────────────
         Container(
-          alignment: Alignment.centerLeft,
-          decoration: kBoxDecorationStyle,
-          height: 60,
-          child: TextField(
-            controller: _emailController,
-            keyboardType: TextInputType.emailAddress,
-            style: const TextStyle(color: Colors.white, fontFamily: 'OpenSans'),
-            onSubmitted: (_) => _handleSendLink(),
-            decoration: const InputDecoration(
-              border: InputBorder.none,
-              contentPadding: EdgeInsets.only(top: 14),
-              prefixIcon: Icon(Icons.email, color: Colors.white),
-              hintText: 'Enter your email',
-              hintStyle: kHintTextStyle,
-            ),
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
+            color: RoverColors.primaryContainer,
+            borderRadius: BorderRadius.circular(16),
           ),
+          child: const Icon(Icons.lock_open_rounded, color: RoverColors.primary, size: 28),
         ),
-        const SizedBox(height: 30),
+        const SizedBox(height: 24),
+
+        // ── Headline ──────────────────────────────────────────────
+        Text('Forgot Password?', style: RoverText.headlineLg(color: RoverColors.primary)),
+        const SizedBox(height: 8),
+        Text(
+          "Enter the email linked to your account. We'll send you a link to reset your password.",
+          style: RoverText.bodyMd(color: RoverColors.textSecondary),
+        ),
+        const SizedBox(height: 36),
+
+        // ── Email ─────────────────────────────────────────────────
+        TextField(
+          controller: _emailController,
+          keyboardType: TextInputType.emailAddress,
+          onSubmitted: (_) => _handleSendLink(),
+          decoration: const InputDecoration(labelText: 'Email'),
+        ),
+        const SizedBox(height: 32),
+
+        // ── CTA ───────────────────────────────────────────────────
         SizedBox(
           width: double.infinity,
-          child: ElevatedButton(
+          height: 56,
+          child: FilledButton(
             onPressed: _isLoading ? null : _handleSendLink,
-            style: ElevatedButton.styleFrom(
-              elevation: 5,
-              padding: const EdgeInsets.all(15),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+            style: FilledButton.styleFrom(
+              backgroundColor: RoverColors.primary,
+              foregroundColor: RoverColors.onPrimary,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              textStyle: RoverText.titleSm(color: RoverColors.onPrimary)
+                  .copyWith(letterSpacing: 1.2),
             ),
             child: _isLoading
-                ? const CircularProgressIndicator(color: Color(0xFF527DAA))
-                : const Text(
-                    'SEND RESET LINK',
-                    style: TextStyle(
-                      color: Color(0xFF527DAA),
-                      letterSpacing: 1.5,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      fontFamily: 'OpenSans',
+                ? const SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      color: RoverColors.onPrimary,
                     ),
-                  ),
+                  )
+                : const Text('SEND RESET LINK'),
           ),
         ),
         const SizedBox(height: 24),
+
+        // ── Back to sign in ───────────────────────────────────────
         Center(
-          child: GestureDetector(
-            onTap: () => Navigator.of(context).pop(),
-            child: const Text(
+          child: TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text(
               'Back to Sign In',
-              style: TextStyle(
-                color: Colors.white70,
-                fontSize: 14,
-                decoration: TextDecoration.underline,
-                decorationColor: Colors.white70,
-              ),
+              style: RoverText.labelMd(color: RoverColors.primary),
             ),
           ),
         ),
@@ -180,73 +155,67 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     return Column(
       children: [
         const SizedBox(height: 60),
-        const Icon(Icons.mark_email_read_outlined, color: Colors.white, size: 80),
+
+        // ── Icon ──────────────────────────────────────────────────
+        Container(
+          width: 80,
+          height: 80,
+          decoration: BoxDecoration(
+            color: RoverColors.primaryContainer,
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(
+            Icons.mark_email_read_outlined,
+            color: RoverColors.primary,
+            size: 44,
+          ),
+        ),
         const SizedBox(height: 30),
-        const Text(
+
+        // ── Headline ──────────────────────────────────────────────
+        Text(
           'Check Your Email',
           textAlign: TextAlign.center,
-          style: TextStyle(
-            color: Colors.white,
-            fontFamily: 'OpenSans',
-            fontSize: 26,
-            fontWeight: FontWeight.bold,
-          ),
+          style: RoverText.headlineMd(color: RoverColors.primary),
         ),
         const SizedBox(height: 16),
         Text(
           'We sent a password reset link to\n${_emailController.text.trim()}',
           textAlign: TextAlign.center,
-          style: const TextStyle(
-            color: Colors.white70,
-            fontFamily: 'OpenSans',
-            fontSize: 14,
-            height: 1.6,
-          ),
+          style: RoverText.bodyMd(color: RoverColors.textSecondary),
         ),
-        const SizedBox(height: 10),
-        const Text(
-          'Also check your spam folder if it doesn\'t arrive within a few minutes.',
+        const SizedBox(height: 8),
+        Text(
+          "Also check your spam folder if it doesn't arrive within a few minutes.",
           textAlign: TextAlign.center,
-          style: TextStyle(
-            color: Colors.white54,
-            fontFamily: 'OpenSans',
-            fontSize: 12,
-            height: 1.6,
-          ),
+          style: RoverText.bodySm(color: RoverColors.outline),
         ),
         const SizedBox(height: 40),
+
+        // ── Back to sign in ───────────────────────────────────────
         SizedBox(
           width: double.infinity,
+          height: 56,
           child: OutlinedButton(
             onPressed: () => Navigator.of(context).pop(),
             style: OutlinedButton.styleFrom(
-              side: const BorderSide(color: Colors.white, width: 2),
-              padding: const EdgeInsets.all(15),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+              foregroundColor: RoverColors.primary,
+              side: const BorderSide(color: RoverColors.primary, width: 1.5),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              textStyle: RoverText.titleSm(color: RoverColors.primary)
+                  .copyWith(letterSpacing: 1.2),
             ),
-            child: const Text(
-              'BACK TO SIGN IN',
-              style: TextStyle(
-                color: Colors.white,
-                letterSpacing: 1.5,
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                fontFamily: 'OpenSans',
-              ),
-            ),
+            child: const Text('BACK TO SIGN IN'),
           ),
         ),
         const SizedBox(height: 20),
+
+        // ── Resend ────────────────────────────────────────────────
         TextButton(
           onPressed: _isLoading ? null : _handleSendLink,
-          child: const Text(
+          child: Text(
             "Didn't receive it? Resend",
-            style: TextStyle(
-              color: Colors.white70,
-              fontSize: 13,
-              decoration: TextDecoration.underline,
-              decorationColor: Colors.white70,
-            ),
+            style: RoverText.labelMd(color: RoverColors.primary),
           ),
         ),
       ],

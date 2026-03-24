@@ -89,7 +89,7 @@ class _EventDetailPageState extends State<EventDetailPage> {
   void _showError(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg), backgroundColor: Colors.red),
+      SnackBar(content: Text(msg), backgroundColor: RoverColors.error),
     );
   }
 
@@ -238,12 +238,12 @@ class _EventDetailPageState extends State<EventDetailPage> {
                     }
                     if (snapshot.hasError) {
                       return _InfoCard(
-                        color: const Color(0xFFFFF3E0),
+                        color: RoverColors.secondaryContainer,
                         children: [
                           Row(
                             children: [
                               const Icon(Icons.warning_amber,
-                                  color: Colors.orange, size: 20),
+                                  color: RoverColors.secondary, size: 20),
                               const SizedBox(width: 10),
                               Expanded(
                                 child: Text(

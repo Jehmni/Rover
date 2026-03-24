@@ -18,7 +18,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_core/firebase_core.dart';
 
-import 'constants.dart';
 import 'services/auth_service.dart';
 import 'screens/welcome_page.dart';
 import 'screens/forgot_password_page.dart';
@@ -224,7 +223,7 @@ class _AuthGateState extends State<AuthGate> {
             "You're already in an organisation. Sign out to join a different one.",
           ),
           duration: Duration(seconds: 4),
-          backgroundColor: Color(0xFF398AE5),
+          backgroundColor: RoverColors.primary,
         ),
       );
     }

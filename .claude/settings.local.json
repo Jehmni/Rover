@@ -3,7 +3,8 @@
     "allow": [
       "WebFetch(domain:stitch.withgoogle.com)",
       "Bash(flutter analyze:*)",
-      "Read(//c/Users/ofone/AppData/Local/Temp/claude/c--Users-ofone-Documents-JEHMNi-Rover/cf5b71b4-fbd5-43a8-85d4-4159a6850442/tasks/**)"
+      "Read(//c/Users/ofone/AppData/Local/Temp/claude/c--Users-ofone-Documents-JEHMNi-Rover/cf5b71b4-fbd5-43a8-85d4-4159a6850442/tasks/**)",
+      "Bash(grep -v \"//\\\\|Colors\\\\.white$\\\\|Colors\\\\.black$\\\\|Colors\\\\.transparent\")"
     ]
   }
 }

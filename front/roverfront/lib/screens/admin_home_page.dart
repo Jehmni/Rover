@@ -211,7 +211,7 @@ class _EventsTabState extends State<_EventsTab> {
                               '${pickedDate!.hour.toString().padLeft(2, '0')}:'
                               '${pickedDate!.minute.toString().padLeft(2, '0')}',
                         style: TextStyle(
-                          color: pickedDate == null ? Colors.red[700] : null,
+                          color: pickedDate == null ? RoverColors.error : null,
                         ),
                       ),
                     ),
@@ -261,7 +261,7 @@ class _EventsTabState extends State<_EventsTab> {
                 if (nameCtrl.text.trim().isEmpty || pickedDate == null) {
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
                     content: Text('Name and date/time are required.'),
-                    backgroundColor: Colors.red,
+                    backgroundColor: RoverColors.error,
                   ));
                   return;
                 }
@@ -449,7 +449,7 @@ class _EventsTabState extends State<_EventsTab> {
               onPressed: () => Navigator.of(ctx).pop(false),
               child: const Text('No')),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            style: FilledButton.styleFrom(backgroundColor: RoverColors.error),
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text('Yes, Cancel',
                 style: TextStyle(color: Colors.white)),
@@ -722,7 +722,7 @@ class _ActionChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = danger ? Colors.red : RoverColors.primary;
+    final color = danger ? RoverColors.error : RoverColors.primary;
     return TextButton.icon(
       icon: Icon(icon, size: 14, color: color),
       label: Text(label,
@@ -768,7 +768,7 @@ class _MembersTabState extends State<_MembersTab> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(e.toString().replaceFirst('Exception: ', '')),
-          backgroundColor: Colors.red,
+          backgroundColor: RoverColors.error,
         ));
       }
     } finally {
@@ -813,7 +813,7 @@ class _MembersTabState extends State<_MembersTab> {
         children: [
           if (admins.isNotEmpty) ...[
             _sectionHeader('Administrators', Icons.manage_accounts,
-                Colors.purple),
+                RoverColors.secondary),
             ...admins.map((m) => _memberTile(m)),
             const SizedBox(height: 8),
           ],
@@ -955,7 +955,7 @@ class _ShareTabState extends State<_ShareTab> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(e.toString().replaceFirst('Exception: ', '')),
-          backgroundColor: Colors.red,
+          backgroundColor: RoverColors.error,
         ));
       }
     } finally {
@@ -1001,7 +1001,7 @@ class _ShareTabState extends State<_ShareTab> {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            style: FilledButton.styleFrom(backgroundColor: RoverColors.error),
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text('Reset Link',
                 style: TextStyle(color: Colors.white)),
@@ -1069,7 +1069,7 @@ class _ShareTabState extends State<_ShareTab> {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            style: FilledButton.styleFrom(backgroundColor: RoverColors.error),
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text('Reject',
                 style: TextStyle(color: Colors.white)),
@@ -1210,8 +1210,8 @@ class _ShareTabState extends State<_ShareTab> {
               child: OutlinedButton.icon(
                 onPressed: _isResetting ? null : _resetLink,
                 style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: Colors.red),
-                  foregroundColor: Colors.red,
+                  side: const BorderSide(color: RoverColors.error),
+                  foregroundColor: RoverColors.error,
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14)),
@@ -1221,7 +1221,7 @@ class _ShareTabState extends State<_ShareTab> {
                         width: 16,
                         height: 16,
                         child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.red),
+                            strokeWidth: 2, color: RoverColors.error),
                       )
                     : const Icon(Icons.refresh),
                 label: Text('Reset Link (invalidates current QR)',
@@ -1321,7 +1321,7 @@ class _ShareTabState extends State<_ShareTab> {
                         ),
                         TextButton(
                           style: TextButton.styleFrom(
-                              foregroundColor: Colors.red),
+                              foregroundColor: RoverColors.error),
                           onPressed: () => _rejectRequest(reqId, name),
                           child: Text('Reject',
                               style: GoogleFonts.inter(

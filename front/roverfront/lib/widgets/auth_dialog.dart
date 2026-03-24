@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/rover_theme.dart';
 
 /// Centered error dialog — requires explicit dismissal so it cannot be missed.
 void showErrorDialog(BuildContext context, String message) {
@@ -6,35 +7,29 @@ void showErrorDialog(BuildContext context, String message) {
     context: context,
     barrierDismissible: false,
     builder: (ctx) => AlertDialog(
+      backgroundColor: RoverColors.surfaceContainerLowest,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
       contentPadding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
-      title: const Row(
+      title: Row(
         children: [
-          Icon(Icons.error_outline_rounded, color: Colors.red, size: 26),
-          SizedBox(width: 10),
+          const Icon(Icons.error_outline_rounded, color: RoverColors.error, size: 26),
+          const SizedBox(width: 10),
           Flexible(
             child: Text(
               'Something went wrong',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              style: RoverText.titleMd(),
             ),
           ),
         ],
       ),
-      content: Text(
-        message,
-        style: const TextStyle(fontSize: 14, height: 1.6, color: Colors.black87),
-      ),
+      content: Text(message, style: RoverText.bodyMd(color: RoverColors.textSecondary)),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(ctx).pop(),
-          child: const Text(
+          child: Text(
             'OK',
-            style: TextStyle(
-              color: Color(0xFF478DE0),
-              fontWeight: FontWeight.bold,
-              fontSize: 15,
-            ),
+            style: RoverText.titleSm(color: RoverColors.primary),
           ),
         ),
       ],
@@ -54,25 +49,20 @@ void showInfoDialog(
     context: context,
     barrierDismissible: false,
     builder: (ctx) => AlertDialog(
+      backgroundColor: RoverColors.surfaceContainerLowest,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
       contentPadding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
       title: Row(
         children: [
-          const Icon(Icons.info_outline_rounded, color: Color(0xFF478DE0), size: 26),
+          const Icon(Icons.info_outline_rounded, color: RoverColors.primary, size: 26),
           const SizedBox(width: 10),
           Flexible(
-            child: Text(
-              title,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
+            child: Text(title, style: RoverText.titleMd()),
           ),
         ],
       ),
-      content: Text(
-        message,
-        style: const TextStyle(fontSize: 14, height: 1.6, color: Colors.black87),
-      ),
+      content: Text(message, style: RoverText.bodyMd(color: RoverColors.textSecondary)),
       actions: [
         TextButton(
           onPressed: () {
@@ -81,11 +71,7 @@ void showInfoDialog(
           },
           child: Text(
             buttonLabel,
-            style: const TextStyle(
-              color: Color(0xFF478DE0),
-              fontWeight: FontWeight.bold,
-              fontSize: 15,
-            ),
+            style: RoverText.titleSm(color: RoverColors.primary),
           ),
         ),
       ],

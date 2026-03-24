@@ -20,6 +20,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../services/pickup_service.dart';
+import '../theme/rover_theme.dart';
 
 class DriverMapPage extends StatefulWidget {
   const DriverMapPage({
@@ -116,7 +117,7 @@ class _DriverMapPageState extends State<DriverMapPage> {
   void _showError(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.red));
+        .showSnackBar(SnackBar(content: Text(msg), backgroundColor: RoverColors.error));
   }
 
   // ── Fit map to all markers ─────────────────────────────────
@@ -166,9 +167,9 @@ class _DriverMapPageState extends State<DriverMapPage> {
   // ── Marker colour by status ────────────────────────────────
   Color _markerColor(String status) {
     switch (status) {
-      case 'en_route':  return Colors.blue;
-      case 'completed': return Colors.grey;
-      default:          return const Color(0xFF478DE0);
+      case 'en_route':  return RoverColors.secondary;
+      case 'completed': return RoverColors.outline;
+      default:          return RoverColors.primary;
     }
   }
 
@@ -187,10 +188,10 @@ class _DriverMapPageState extends State<DriverMapPage> {
             decoration: BoxDecoration(
               color: Colors.white,
               shape: BoxShape.circle,
-              border: Border.all(color: Colors.green, width: 3),
-              boxShadow: const [BoxShadow(blurRadius: 4, color: Colors.black26)],
+              border: Border.all(color: RoverColors.primary, width: 3),
+              boxShadow: [BoxShadow(blurRadius: 8, color: Colors.black.withValues(alpha: 0.10))],
             ),
-            child: const Icon(Icons.directions_car, color: Colors.green, size: 26),
+            child: const Icon(Icons.directions_car, color: RoverColors.primary, size: 26),
           ),
         ),
       );
@@ -213,12 +214,10 @@ class _DriverMapPageState extends State<DriverMapPage> {
           height: 44,
           child: Container(
             decoration: BoxDecoration(
-              color: isCompleted
-                  ? Colors.grey[300]
-                  : color,
+              color: isCompleted ? RoverColors.surfaceContainerHigh : color,
               shape: BoxShape.circle,
               border: Border.all(color: Colors.white, width: 2),
-              boxShadow: const [BoxShadow(blurRadius: 4, color: Colors.black26)],
+              boxShadow: [BoxShadow(blurRadius: 8, color: Colors.black.withValues(alpha: 0.10))],
             ),
             child: isCompleted
                 ? const Icon(Icons.check, color: Colors.white, size: 22)
@@ -247,8 +246,8 @@ class _DriverMapPageState extends State<DriverMapPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.eventName),
-        backgroundColor: const Color(0xFF478DE0),
-        foregroundColor: Colors.white,
+        backgroundColor: RoverColors.primary,
+        foregroundColor: RoverColors.onPrimary,
         actions: [
           IconButton(
             icon: const Icon(Icons.my_location),
@@ -289,18 +288,16 @@ class _DriverMapPageState extends State<DriverMapPage> {
             children: [
               // ── Summary banner ────────────────────────────
               Container(
-                color: const Color(0xFF478DE0),
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 16, vertical: 6),
+                color: RoverColors.primary,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                 child: Row(
                   children: [
-                    const Icon(Icons.people, color: Colors.white70, size: 16),
+                    Icon(Icons.people, color: RoverColors.onPrimary.withValues(alpha: 0.7), size: 16),
                     const SizedBox(width: 6),
                     Text(
                       '$pending stop${pending == 1 ? '' : 's'} remaining'
                       ' of ${pickups.length}',
-                      style: const TextStyle(
-                          color: Colors.white, fontSize: 13),
+                      style: RoverText.bodySm(color: RoverColors.onPrimary),
                     ),
                   ],
                 ),
@@ -331,10 +328,10 @@ class _DriverMapPageState extends State<DriverMapPage> {
               Expanded(
                 flex: 2,
                 child: pickups.isEmpty
-                    ? const Center(
+                    ? Center(
                         child: Text(
                           'No pickups for this event.',
-                          style: TextStyle(color: Colors.grey),
+                          style: RoverText.bodyMd(color: RoverColors.outline),
                         ),
                       )
                     : ListView.builder(
@@ -358,7 +355,7 @@ class _DriverMapPageState extends State<DriverMapPage> {
                             onTap: () => _centreOn(p),
                             leading: CircleAvatar(
                               backgroundColor:
-                                  isCompleted ? Colors.grey[300] : color,
+                                  isCompleted ? RoverColors.surfaceContainerHigh : color,
                               child: isCompleted
                                   ? const Icon(Icons.check,
                                       color: Colors.white, size: 18)
@@ -376,7 +373,7 @@ class _DriverMapPageState extends State<DriverMapPage> {
                                 decoration: isCompleted
                                     ? TextDecoration.lineThrough
                                     : null,
-                                color: isCompleted ? Colors.grey : null,
+                                color: isCompleted ? RoverColors.outline : RoverColors.onSurface,
                               ),
                             ),
                             subtitle: Text([
@@ -393,7 +390,7 @@ class _DriverMapPageState extends State<DriverMapPage> {
                                         IconButton(
                                           icon: const Icon(
                                               Icons.directions_car,
-                                              color: Colors.blue),
+                                              color: RoverColors.primary),
                                           tooltip: 'Mark en route',
                                           onPressed: () =>
                                               _markEnRoute(p['id'] as int),
@@ -401,7 +398,7 @@ class _DriverMapPageState extends State<DriverMapPage> {
                                       IconButton(
                                         icon: const Icon(
                                             Icons.check_circle_outline,
-                                            color: Colors.green),
+                                            color: RoverColors.primary),
                                         tooltip: 'Mark picked up',
                                         onPressed: () =>
                                             _markCompleted(p['id'] as int),

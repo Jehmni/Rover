@@ -181,7 +181,7 @@ class _UserGuidePageState extends State<UserGuidePage> {
       _Section(
         icon: Icons.admin_panel_settings_rounded,
         title: 'For Organisers (Admins)',
-        color: Colors.purple,
+        color: RoverColors.secondary,
         initiallyExpanded: role == 'admin',
         items: [
           _Item(
@@ -362,7 +362,7 @@ class _UserGuidePageState extends State<UserGuidePage> {
       _Section(
         icon: Icons.link_rounded,
         title: 'Joining an Organisation',
-        color: Colors.teal,
+        color: RoverColors.primary,
         initiallyExpanded: false,
         items: [
           _Item(
@@ -440,7 +440,7 @@ class _UserGuidePageState extends State<UserGuidePage> {
       _Section(
         icon: Icons.notifications_rounded,
         title: 'Notifications',
-        color: Colors.red,
+        color: RoverColors.secondary,
         initiallyExpanded: false,
         items: [
           _Item(

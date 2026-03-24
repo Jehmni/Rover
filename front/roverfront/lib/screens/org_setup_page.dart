@@ -695,7 +695,7 @@ class _OrgSearchDialogState extends State<_OrgSearchDialog> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(e.toString().replaceFirst('Exception: ', '')),
-          backgroundColor: Colors.red,
+          backgroundColor: RoverColors.error,
         ));
       }
     } finally {
@@ -728,7 +728,7 @@ class _OrgSearchDialogState extends State<_OrgSearchDialog> {
             else if (_searchError)
               Text(
                 'Search failed — check your connection and try again.',
-                style: GoogleFonts.inter(color: Colors.red, fontSize: 13),
+                style: GoogleFonts.inter(color: RoverColors.error, fontSize: 13),
               )
             else if (_results.isEmpty && _searchCtrl.text.isNotEmpty)
               Text('No results. Try a different name or city.',

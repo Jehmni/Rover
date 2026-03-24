@@ -80,7 +80,7 @@ class _UserHomePageState extends State<UserHomePage> {
   void _showError(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg), backgroundColor: Colors.red),
+      SnackBar(content: Text(msg), backgroundColor: RoverColors.error),
     );
   }
 
