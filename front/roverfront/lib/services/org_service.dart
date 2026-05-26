@@ -9,6 +9,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../main.dart';
 
 class OrgService {
+  static int _lastRangeIndex(int offset, int limit) {
+    final safeLimit = limit.clamp(1, 100).toInt();
+    return offset + safeLimit - 1;
+  }
+
   // ─────────────────────────────────────────────────────────
   // CREATE ORGANISATION
   // The calling user becomes admin of the new org.
@@ -25,10 +30,10 @@ class OrgService {
       final result = await supabase.rpc(
         'create_organisation_and_admin',
         params: {
-          'org_name':    orgName.trim(),
-          'org_city':    city?.trim() ?? '',
+          'org_name': orgName.trim(),
+          'org_city': city?.trim() ?? '',
           'org_country': country?.trim() ?? '',
-          'org_type':    orgType,
+          'org_type': orgType,
           'p_full_name': fullName.trim(),
         },
       );
@@ -53,7 +58,7 @@ class OrgService {
         params: {
           'invite_code': inviteCode.trim().toUpperCase(),
           'p_full_name': fullName.trim(),
-          'p_phone':     phone?.trim() ?? '',
+          'p_phone': phone?.trim() ?? '',
         },
       );
       return result as String;
@@ -75,9 +80,9 @@ class OrgService {
       final result = await supabase.rpc(
         'generate_invite_code',
         params: {
-          'p_role':       role,
+          'p_role': role,
           if (expiresAt != null) 'p_expires_at': expiresAt.toIso8601String(),
-          'p_max_uses':   maxUses,
+          'p_max_uses': maxUses,
         },
       );
       return result as String;
@@ -119,13 +124,17 @@ class OrgService {
   // GET ALL MEMBERS OF MY ORG
   // RLS limits results to same org automatically.
   // ─────────────────────────────────────────────────────────
-  static Future<List<Map<String, dynamic>>> getOrgMembers() async {
+  static Future<List<Map<String, dynamic>>> getOrgMembers({
+    int offset = 0,
+    int limit = 100,
+  }) async {
     try {
       final data = await supabase
           .from('profiles')
           .select('id, full_name, role, phone, created_at')
           .order('role')
-          .order('full_name');
+          .order('full_name')
+          .range(offset, _lastRangeIndex(offset, limit));
       return List<Map<String, dynamic>>.from(data);
     } catch (e) {
       throw Exception(_clean(e));
@@ -135,7 +144,10 @@ class OrgService {
   // ─────────────────────────────────────────────────────────
   // GET ACTIVE INVITE CODES FOR MY ORG
   // ─────────────────────────────────────────────────────────
-  static Future<List<Map<String, dynamic>>> getOrgInvites() async {
+  static Future<List<Map<String, dynamic>>> getOrgInvites({
+    int offset = 0,
+    int limit = 50,
+  }) async {
     try {
       final userId = supabase.auth.currentUser?.id;
       if (userId == null) return [];
@@ -154,7 +166,8 @@ class OrgService {
           .from('org_invites')
           .select()
           .eq('org_id', orgId)
-          .order('created_at', ascending: false);
+          .order('created_at', ascending: false)
+          .range(offset, _lastRangeIndex(offset, limit));
       return List<Map<String, dynamic>>.from(data);
     } catch (e) {
       throw Exception(_clean(e));
@@ -168,8 +181,7 @@ class OrgService {
     try {
       await supabase
           .from('org_invites')
-          .update({'is_active': false})
-          .eq('id', inviteId);
+          .update({'is_active': false}).eq('id', inviteId);
     } catch (e) {
       throw Exception(_clean(e));
     }
@@ -191,7 +203,7 @@ class OrgService {
         'join_organisation',
         params: {
           'p_token': token.trim(),
-          'p_role':  role,
+          'p_role': role,
         },
       );
       return result as String;
@@ -269,9 +281,75 @@ class OrgService {
       final userId = supabase.auth.currentUser?.id;
       if (userId == null) throw Exception('You must be signed in.');
       await supabase.from('org_join_requests').insert({
-        'org_id':  orgId,
+        'org_id': orgId,
         'user_id': userId,
+        'requested_role': 'user',
       });
+    } catch (e) {
+      throw Exception(_clean(e));
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────
+  // UPDATE ORG ACCESS SETTINGS
+  // joinPolicy: open | approval | allowlist
+  // driverJoinPolicy: approval | open
+  // ─────────────────────────────────────────────────────────
+  static Future<void> updateAccessSettings({
+    required String joinPolicy,
+    required String driverJoinPolicy,
+    required bool searchable,
+  }) async {
+    try {
+      await supabase.rpc(
+        'update_org_access_settings',
+        params: {
+          'p_join_policy': joinPolicy,
+          'p_driver_join_policy': driverJoinPolicy,
+          'p_searchable': searchable,
+        },
+      );
+    } catch (e) {
+      throw Exception(_clean(e));
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────
+  // ALLOWLIST MANAGEMENT
+  // ─────────────────────────────────────────────────────────
+  static Future<List<Map<String, dynamic>>> getAllowlist({
+    int offset = 0,
+    int limit = 100,
+  }) async {
+    try {
+      final data = await supabase
+          .from('org_email_allowlist')
+          .select('id, email, claimed, created_at')
+          .order('email')
+          .range(offset, _lastRangeIndex(offset, limit));
+      return List<Map<String, dynamic>>.from(data);
+    } catch (e) {
+      throw Exception(_clean(e));
+    }
+  }
+
+  static Future<void> addAllowlistEmail(String email) async {
+    try {
+      await supabase.rpc(
+        'add_allowlist_email',
+        params: {'p_email': email.trim()},
+      );
+    } catch (e) {
+      throw Exception(_clean(e));
+    }
+  }
+
+  static Future<void> removeAllowlistEmail(int id) async {
+    try {
+      await supabase.rpc(
+        'remove_allowlist_email',
+        params: {'p_id': id},
+      );
     } catch (e) {
       throw Exception(_clean(e));
     }
@@ -287,13 +365,17 @@ class OrgService {
   //   2. Batch-fetch profiles by id IN (user_ids).
   // This correctly uses profiles.id = auth.users.id = user_id.
   // ─────────────────────────────────────────────────────────
-  static Future<List<Map<String, dynamic>>> getPendingRequests() async {
+  static Future<List<Map<String, dynamic>>> getPendingRequests({
+    int offset = 0,
+    int limit = 50,
+  }) async {
     try {
       final requests = await supabase
           .from('org_join_requests')
-          .select('id, user_id, created_at')
+          .select('id, user_id, requested_role, created_at')
           .eq('status', 'pending')
-          .order('created_at', ascending: true);
+          .order('created_at', ascending: true)
+          .range(offset, _lastRangeIndex(offset, limit));
 
       final list = List<Map<String, dynamic>>.from(requests);
       if (list.isEmpty) return [];
@@ -328,9 +410,9 @@ class OrgService {
   // ─────────────────────────────────────────────────────────
   static Future<void> approveRequest(int requestId) async {
     try {
-      await supabase.rpc(
-        'approve_join_request',
-        params: {'p_request_id': requestId},
+      await _reviewJoinRequest(
+        requestId: requestId,
+        action: 'approve',
       );
     } catch (e) {
       throw Exception(_clean(e));
@@ -342,12 +424,33 @@ class OrgService {
   // ─────────────────────────────────────────────────────────
   static Future<void> rejectRequest(int requestId) async {
     try {
-      await supabase.rpc(
-        'reject_join_request',
-        params: {'p_request_id': requestId},
+      await _reviewJoinRequest(
+        requestId: requestId,
+        action: 'reject',
       );
     } catch (e) {
       throw Exception(_clean(e));
+    }
+  }
+
+  static Future<void> _reviewJoinRequest({
+    required int requestId,
+    required String action,
+  }) async {
+    final response = await supabase.functions.invoke(
+      'review-join-request',
+      body: {
+        'request_id': requestId,
+        'action': action,
+      },
+    );
+
+    if (response.data == null) {
+      throw Exception('review-join-request function returned no data.');
+    }
+
+    if (response.data is Map && response.data['error'] != null) {
+      throw Exception(response.data['error'].toString());
     }
   }
 

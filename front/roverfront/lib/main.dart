@@ -11,6 +11,7 @@
 import 'dart:async';
 
 import 'package:app_links/app_links.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -90,21 +91,33 @@ Widget destinationForRole(String role, {String? orgToken, String? orgName}) {
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  const supabaseUrl = String.fromEnvironment('SUPABASE_URL');
+  const supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
+  if (supabaseUrl.isEmpty || supabaseAnonKey.isEmpty) {
+    throw StateError(
+      'Missing required dart-defines: SUPABASE_URL and SUPABASE_ANON_KEY.',
+    );
+  }
+
   await Supabase.initialize(
-    url: const String.fromEnvironment(
-      'SUPABASE_URL',
-      defaultValue: 'https://adswkssbhlqeuewxijep.supabase.co',
-    ),
-    anonKey: const String.fromEnvironment(
-      'SUPABASE_ANON_KEY',
-      defaultValue:
-          'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkc3drc3NiaGxxZXVld3hpamVwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMwOTcyNTMsImV4cCI6MjA4ODY3MzI1M30.ciU00N7aQDF1hdsVOiEl1yBrD7R6IeV4qZ8cKPtEY2Q',
-    ),
+    url: supabaseUrl,
+    anonKey: supabaseAnonKey,
   );
 
   try {
     await Firebase.initializeApp();
-  } catch (e) {
+  } catch (e, stackTrace) {
+    if (kReleaseMode) {
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: e,
+          stack: stackTrace,
+          library: 'firebase_core',
+          context: ErrorDescription('while initializing Firebase'),
+        ),
+      );
+      rethrow;
+    }
     debugPrint('Firebase init skipped (run flutterfire configure): $e');
   }
 

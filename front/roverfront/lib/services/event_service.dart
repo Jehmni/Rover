@@ -1,48 +1,56 @@
 // event_service.dart
 //
-// Replaces ALL HTTP calls to:
-//   GET    /api/events               (new — list all active events)
-//   GET    /api/events/search        (was broken — Event.location/date/type missing)
-//   GET    /api/event/<id>/details
-//   POST   /api/event/create
-//   PUT    /api/event/<id>/update
-//   DELETE /api/event/<id>/cancel
-//   POST   /api/events/<id>/subscribe
-//   POST   /api/events/<id>/unsubscribe
-//   POST   /api/events/<id>/assign-driver
-//
-// Fixes applied vs rover.py:
-//   Bug 4 — old code wrote event.driver_id; correct column is assigned_driver_id
-//   Bug 5 — search filters on location/date/type now work (columns exist in schema)
-//   Bug 7 — event_id always comes from the typed parameter, never re-read from body
+// Supabase-backed event service for list/search/detail, CRUD, subscriptions,
+// and driver assignment.
 
 import '../main.dart';
 
 class EventService {
+  static int _lastRangeIndex(int offset, int limit) {
+    final safeLimit = limit.clamp(1, 100).toInt();
+    return offset + safeLimit - 1;
+  }
+
+  static Map<String, double>? pointFromGeoJson(dynamic point) {
+    if (point is! Map) return null;
+    final coordinates = point['coordinates'];
+    if (coordinates is! List || coordinates.length < 2) return null;
+    final lon = (coordinates[0] as num?)?.toDouble();
+    final lat = (coordinates[1] as num?)?.toDouble();
+    if (lat == null || lon == null) return null;
+    return {'latitude': lat, 'longitude': lon};
+  }
+
   // ─────────────────────────────────────────────────────────
   // LIST all active events, newest first by event_date.
   // Joins admin profile for display name.
   // ─────────────────────────────────────────────────────────
-  static Future<List<Map<String, dynamic>>> getEvents() async {
+  static Future<List<Map<String, dynamic>>> getEvents({
+    int offset = 0,
+    int limit = 50,
+  }) async {
     // No status filter here — RLS handles it:
     //   regular users: sees active only (policy: status = 'active')
     //   admins: sees all statuses (policy allows admin role)
     final data = await supabase
         .from('events')
-        .select('*, admin:profiles!admin_id(full_name), driver:profiles!assigned_driver_id(full_name)')
-        .order('event_date', ascending: true);
+        .select(
+            '*, admin:profiles!admin_id(full_name), driver:profiles!assigned_driver_id(full_name)')
+        .order('event_date', ascending: true)
+        .range(offset, _lastRangeIndex(offset, limit));
     return List<Map<String, dynamic>>.from(data);
   }
 
   // ─────────────────────────────────────────────────────────
   // SEARCH events by name, type, and/or date.
-  // All three columns exist in the schema — this will NOT crash
-  // (unlike the old Flask endpoint that filtered on phantom columns).
+  // All three columns exist in the schema.
   // ─────────────────────────────────────────────────────────
   static Future<List<Map<String, dynamic>>> searchEvents({
     String? name,
     String? eventType,
     DateTime? fromDate,
+    int offset = 0,
+    int limit = 50,
   }) async {
     var query = supabase
         .from('events')
@@ -58,7 +66,9 @@ class EventService {
       query = query.gte('event_date', fromDate.toIso8601String());
     }
 
-    final data = await query.order('event_date', ascending: true);
+    final data = await query
+        .order('event_date', ascending: true)
+        .range(offset, _lastRangeIndex(offset, limit));
     return List<Map<String, dynamic>>.from(data);
   }
 
@@ -68,7 +78,8 @@ class EventService {
   static Future<Map<String, dynamic>> getEventDetails(int eventId) async {
     final data = await supabase
         .from('events')
-        .select('*, admin:profiles!admin_id(full_name), driver:profiles!assigned_driver_id(full_name, id)')
+        .select(
+            '*, admin:profiles!admin_id(full_name), driver:profiles!assigned_driver_id(full_name, id)')
         .eq('id', eventId)
         .single();
     return Map<String, dynamic>.from(data);
@@ -121,12 +132,21 @@ class EventService {
     String? eventType,
     String? locationName,
     DateTime? eventDate,
+    double? latitude,
+    double? longitude,
   }) async {
     // Fix M-9: validate date on edit, matching the DB CHECK constraint
     // (event_date > now() - interval '1 hour')
     if (eventDate != null &&
-        eventDate.isBefore(DateTime.now().subtract(const Duration(minutes: 55)))) {
+        eventDate
+            .isBefore(DateTime.now().subtract(const Duration(minutes: 55)))) {
       throw Exception('Event date must not be in the past.');
+    }
+    if (latitude != null && (latitude < -90 || latitude > 90)) {
+      throw Exception('Latitude must be between -90 and 90.');
+    }
+    if (longitude != null && (longitude < -180 || longitude > 180)) {
+      throw Exception('Longitude must be between -180 and 180.');
     }
     final updates = <String, dynamic>{};
     if (name != null && name.trim().isNotEmpty) updates['name'] = name.trim();
@@ -136,9 +156,13 @@ class EventService {
     if (eventDate != null) {
       updates['event_date'] = eventDate.toIso8601String();
     }
+    if (latitude != null && longitude != null) {
+      updates['location'] = 'POINT($longitude $latitude)';
+    }
     if (updates.isEmpty) return;
 
     await supabase.from('events').update(updates).eq('id', eventId);
+    await _notifySubscribers(eventId, 'edited');
   }
 
   // ─────────────────────────────────────────────────────────
@@ -146,11 +170,15 @@ class EventService {
   // RLS subs_select_admin ensures only the org admin can call this.
   // ─────────────────────────────────────────────────────────
   static Future<List<Map<String, dynamic>>> getEventAttendees(
-      int eventId) async {
+    int eventId, {
+    int offset = 0,
+    int limit = 50,
+  }) async {
     final data = await supabase
         .from('event_subscriptions')
         .select('user_id, profiles!user_id(full_name, phone)')
-        .eq('event_id', eventId);
+        .eq('event_id', eventId)
+        .range(offset, _lastRangeIndex(offset, limit));
     return List<Map<String, dynamic>>.from(data);
   }
 
@@ -160,16 +188,27 @@ class EventService {
   static Future<void> cancelEvent(int eventId) async {
     await supabase
         .from('events')
-        .update({'status': 'cancelled'})
-        .eq('id', eventId);
+        .update({'status': 'cancelled'}).eq('id', eventId);
+    await _notifySubscribers(eventId, 'cancelled');
+  }
+
+  static Future<void> _notifySubscribers(
+      int eventId, String notificationType) async {
+    try {
+      await supabase.functions.invoke(
+        'notify-event-subscribers',
+        body: {
+          'event_id': eventId,
+          'notification_type': notificationType,
+        },
+      );
+    } catch (_) {
+      // Event updates should remain successful if push notification is down.
+    }
   }
 
   // ─────────────────────────────────────────────────────────
   // SUBSCRIBE the current user to an event.
-  //
-  // Fix vs rover.py Bug 7: event_id comes ONLY from the
-  // typed parameter — it is never re-read from a request body,
-  // so there is no URL-vs-body mismatch.
   // ─────────────────────────────────────────────────────────
   static Future<void> subscribe(int eventId) async {
     final userId = supabase.auth.currentUser?.id;
@@ -216,34 +255,37 @@ class EventService {
 
   // ─────────────────────────────────────────────────────────
   // ASSIGN a driver to an event. Admin-only; enforced by RLS.
-  //
-  // Fix vs rover.py Bug 4: old code wrote event.driver_id,
-  // which does not exist. The correct column is assigned_driver_id.
   // ─────────────────────────────────────────────────────────
   static Future<void> assignDriver(int eventId, String driverUserId) async {
     await supabase
         .from('events')
-        .update({'assigned_driver_id': driverUserId}) // correct column name
-        .eq('id', eventId);
+        .update({'assigned_driver_id': driverUserId}).eq('id', eventId);
   }
 
   // ─────────────────────────────────────────────────────────
   // LIST all drivers (profiles with role = 'driver').
   // Used by the admin screen's driver-assignment dropdown.
   // ─────────────────────────────────────────────────────────
-  static Future<List<Map<String, dynamic>>> getDrivers() async {
+  static Future<List<Map<String, dynamic>>> getDrivers({
+    int offset = 0,
+    int limit = 100,
+  }) async {
     final data = await supabase
         .from('profiles')
         .select('id, full_name, phone')
         .eq('role', 'driver')
-        .order('full_name');
+        .order('full_name')
+        .range(offset, _lastRangeIndex(offset, limit));
     return List<Map<String, dynamic>>.from(data);
   }
 
   // ─────────────────────────────────────────────────────────
   // LIST events assigned to the current driver.
   // ─────────────────────────────────────────────────────────
-  static Future<List<Map<String, dynamic>>> getDriverEvents() async {
+  static Future<List<Map<String, dynamic>>> getDriverEvents({
+    int offset = 0,
+    int limit = 50,
+  }) async {
     final driverId = supabase.auth.currentUser?.id;
     if (driverId == null) return [];
 
@@ -252,7 +294,8 @@ class EventService {
         .select()
         .eq('assigned_driver_id', driverId)
         .eq('status', 'active')
-        .order('event_date', ascending: true);
+        .order('event_date', ascending: true)
+        .range(offset, _lastRangeIndex(offset, limit));
     return List<Map<String, dynamic>>.from(data);
   }
 }

@@ -48,5 +48,7 @@
 	<!-- Camera — required by mobile_scanner for QR code scanning -->
 	<key>NSCameraUsageDescription</key>
 	<string>Rover uses the camera to scan QR codes for joining organisations.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Rover uses your location to request pickups and provide driver ETAs.</string>
 </dict>
 </plist>

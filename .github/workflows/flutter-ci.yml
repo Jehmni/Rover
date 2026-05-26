@@ -1,0 +1,54 @@
+name: Flutter CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+jobs:
+  flutter:
+    name: Analyze, Test, Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: front/roverfront
+    env:
+      FIREBASE_ANDROID_GOOGLE_SERVICES_JSON: ${{ secrets.FIREBASE_ANDROID_GOOGLE_SERVICES_JSON }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.41.5"
+          channel: stable
+          cache: true
+
+      - name: Resolve dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
+
+      - name: Write Firebase Android config
+        if: ${{ env.FIREBASE_ANDROID_GOOGLE_SERVICES_JSON != '' }}
+        shell: bash
+        run: printf '%s' "$FIREBASE_ANDROID_GOOGLE_SERVICES_JSON" > android/app/google-services.json
+
+      - name: Build Android release APK
+        if: ${{ env.FIREBASE_ANDROID_GOOGLE_SERVICES_JSON != '' }}
+        run: flutter build apk --release

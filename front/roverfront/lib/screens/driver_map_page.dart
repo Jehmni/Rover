@@ -82,6 +82,7 @@ class _DriverMapPageState extends State<DriverMapPage> {
       if (mounted) {
         setState(() => _driverPosition = LatLng(pos.latitude, pos.longitude));
       }
+      _persistDriverLocation(pos);
     } catch (_) {}
 
     // Then stream updates
@@ -94,6 +95,16 @@ class _DriverMapPageState extends State<DriverMapPage> {
       if (mounted) {
         setState(() => _driverPosition = LatLng(pos.latitude, pos.longitude));
       }
+      _persistDriverLocation(pos);
+    });
+  }
+
+  void _persistDriverLocation(Position pos) {
+    PickupService.updateDriverLocation(
+      latitude: pos.latitude,
+      longitude: pos.longitude,
+    ).catchError((_) {
+      // Location persistence is best-effort; the live map should keep working.
     });
   }
 

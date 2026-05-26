@@ -7,6 +7,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
@@ -70,13 +71,14 @@ class _AdminHomePageState extends State<AdminHomePage>
             Text(
               'Admin Dashboard',
               style: GoogleFonts.inter(
-                  fontSize: 17, fontWeight: FontWeight.w700, color: Colors.white),
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white),
             ),
             if (_orgName != null)
               Text(
                 _orgName!,
-                style: GoogleFonts.inter(
-                    fontSize: 12, color: Colors.white70),
+                style: GoogleFonts.inter(fontSize: 12, color: Colors.white70),
               ),
           ],
         ),
@@ -98,8 +100,8 @@ class _AdminHomePageState extends State<AdminHomePage>
           indicatorWeight: 3,
           labelColor: Colors.white,
           unselectedLabelColor: Colors.white54,
-          labelStyle: GoogleFonts.inter(
-              fontSize: 12, fontWeight: FontWeight.w600),
+          labelStyle:
+              GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600),
           tabs: const [
             Tab(icon: Icon(Icons.event, size: 20), text: 'Events'),
             Tab(icon: Icon(Icons.people, size: 20), text: 'Members'),
@@ -131,10 +133,10 @@ class _EventsTab extends StatefulWidget {
 }
 
 class _EventsTabState extends State<_EventsTab> {
-  List<Map<String, dynamic>> _events  = [];
+  List<Map<String, dynamic>> _events = [];
   List<Map<String, dynamic>> _drivers = [];
   bool _isLoading = true;
-  bool _isActing  = false;
+  bool _isActing = false;
 
   @override
   void initState() {
@@ -150,7 +152,7 @@ class _EventsTabState extends State<_EventsTab> {
         EventService.getDrivers(),
       ]);
       setState(() {
-        _events  = List<Map<String, dynamic>>.from(results[0] as List);
+        _events = List<Map<String, dynamic>>.from(results[0] as List);
         _drivers = List<Map<String, dynamic>>.from(results[1] as List);
       });
     } catch (e) {
@@ -164,9 +166,17 @@ class _EventsTabState extends State<_EventsTab> {
   void _showEventDialog({Map<String, dynamic>? existing}) {
     final ev = existing;
     final nameCtrl = TextEditingController(text: ev?['name'] as String? ?? '');
-    final descCtrl = TextEditingController(text: ev?['description'] as String? ?? '');
-    final typeCtrl = TextEditingController(text: ev?['event_type'] as String? ?? '');
-    final locCtrl  = TextEditingController(text: ev?['location_name'] as String? ?? '');
+    final descCtrl =
+        TextEditingController(text: ev?['description'] as String? ?? '');
+    final typeCtrl =
+        TextEditingController(text: ev?['event_type'] as String? ?? '');
+    final locCtrl =
+        TextEditingController(text: ev?['location_name'] as String? ?? '');
+    final existingPoint = EventService.pointFromGeoJson(ev?['location']);
+    final latCtrl = TextEditingController(
+        text: existingPoint?['latitude']?.toStringAsFixed(6) ?? '');
+    final lonCtrl = TextEditingController(
+        text: existingPoint?['longitude']?.toStringAsFixed(6) ?? '');
     DateTime? pickedDate = ev?['event_date'] != null
         ? DateTime.tryParse(ev!['event_date'] as String)
         : null;
@@ -200,6 +210,76 @@ class _EventsTabState extends State<_EventsTab> {
                   controller: locCtrl,
                   decoration: const InputDecoration(labelText: 'Location Name'),
                 ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: latCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Latitude',
+                          hintText: '51.5074',
+                        ),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          signed: true,
+                          decimal: true,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: TextField(
+                        controller: lonCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Longitude',
+                          hintText: '-0.1278',
+                        ),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          signed: true,
+                          decimal: true,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    icon: const Icon(Icons.my_location, size: 18),
+                    label: const Text('Use Current Location'),
+                    onPressed: () async {
+                      try {
+                        LocationPermission permission =
+                            await Geolocator.checkPermission();
+                        if (permission == LocationPermission.denied) {
+                          permission = await Geolocator.requestPermission();
+                        }
+                        if (permission == LocationPermission.denied ||
+                            permission == LocationPermission.deniedForever) {
+                          if (context.mounted) {
+                            _err(
+                                'Location permission is required to use current location.');
+                          }
+                          return;
+                        }
+
+                        final pos = await Geolocator.getCurrentPosition(
+                          locationSettings: const LocationSettings(
+                            accuracy: LocationAccuracy.high,
+                          ),
+                        );
+                        setDS(() {
+                          latCtrl.text = pos.latitude.toStringAsFixed(6);
+                          lonCtrl.text = pos.longitude.toStringAsFixed(6);
+                        });
+                      } catch (e) {
+                        if (context.mounted) {
+                          _err(e.toString().replaceFirst('Exception: ', ''));
+                        }
+                      }
+                    },
+                  ),
+                ),
                 const SizedBox(height: 12),
                 Row(
                   children: [
@@ -208,8 +288,8 @@ class _EventsTabState extends State<_EventsTab> {
                         pickedDate == null
                             ? 'No date/time selected'
                             : '${pickedDate!.day}/${pickedDate!.month}/${pickedDate!.year}  '
-                              '${pickedDate!.hour.toString().padLeft(2, '0')}:'
-                              '${pickedDate!.minute.toString().padLeft(2, '0')}',
+                                '${pickedDate!.hour.toString().padLeft(2, '0')}:'
+                                '${pickedDate!.minute.toString().padLeft(2, '0')}',
                         style: TextStyle(
                           color: pickedDate == null ? RoverColors.error : null,
                         ),
@@ -224,8 +304,8 @@ class _EventsTabState extends State<_EventsTab> {
                               DateTime.now().add(const Duration(days: 1)),
                           firstDate: DateTime.now()
                               .subtract(const Duration(minutes: 55)),
-                          lastDate: DateTime.now()
-                              .add(const Duration(days: 365 * 2)),
+                          lastDate:
+                              DateTime.now().add(const Duration(days: 365 * 2)),
                         );
                         if (d == null) return;
                         if (!ctx.mounted) return;
@@ -254,8 +334,8 @@ class _EventsTabState extends State<_EventsTab> {
               onPressed: () => Navigator.of(ctx).pop(),
             ),
             FilledButton(
-              style: FilledButton.styleFrom(
-                  backgroundColor: RoverColors.primary),
+              style:
+                  FilledButton.styleFrom(backgroundColor: RoverColors.primary),
               child: Text(isEdit ? 'Save' : 'Create'),
               onPressed: () async {
                 if (nameCtrl.text.trim().isEmpty || pickedDate == null) {
@@ -265,38 +345,68 @@ class _EventsTabState extends State<_EventsTab> {
                   ));
                   return;
                 }
+                double? latitude;
+                double? longitude;
+                final latText = latCtrl.text.trim();
+                final lonText = lonCtrl.text.trim();
+                if (latText.isNotEmpty || lonText.isNotEmpty) {
+                  latitude = double.tryParse(latText);
+                  longitude = double.tryParse(lonText);
+                  if (latitude == null || longitude == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                      content: Text(
+                          'Latitude and longitude must both be valid numbers.'),
+                      backgroundColor: RoverColors.error,
+                    ));
+                    return;
+                  }
+                  if (latitude < -90 ||
+                      latitude > 90 ||
+                      longitude < -180 ||
+                      longitude > 180) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                      content: Text('Coordinates are outside the valid range.'),
+                      backgroundColor: RoverColors.error,
+                    ));
+                    return;
+                  }
+                }
                 Navigator.of(ctx).pop();
                 setState(() => _isActing = true);
                 try {
                   if (isEdit) {
                     await EventService.updateEvent(
                       ev['id'] as int,
-                      name:         nameCtrl.text.trim(),
-                      description:  descCtrl.text.trim().isEmpty
+                      name: nameCtrl.text.trim(),
+                      description: descCtrl.text.trim().isEmpty
                           ? null
                           : descCtrl.text.trim(),
-                      eventType:    typeCtrl.text.trim().isEmpty
+                      eventType: typeCtrl.text.trim().isEmpty
                           ? null
                           : typeCtrl.text.trim(),
                       locationName: locCtrl.text.trim().isEmpty
                           ? null
                           : locCtrl.text.trim(),
-                      eventDate:    pickedDate!,
+                      eventDate: pickedDate!,
+                      latitude: latitude,
+                      longitude: longitude,
                     );
                     _snack('Event updated.', RoverColors.primary);
                   } else {
                     await EventService.createEvent(
-                      name:         nameCtrl.text.trim(),
-                      description:  descCtrl.text.trim().isEmpty
+                      name: nameCtrl.text.trim(),
+                      description: descCtrl.text.trim().isEmpty
                           ? null
                           : descCtrl.text.trim(),
-                      eventDate:    pickedDate!,
-                      eventType:    typeCtrl.text.trim().isEmpty
+                      eventDate: pickedDate!,
+                      eventType: typeCtrl.text.trim().isEmpty
                           ? null
                           : typeCtrl.text.trim(),
                       locationName: locCtrl.text.trim().isEmpty
                           ? null
                           : locCtrl.text.trim(),
+                      latitude: latitude,
+                      longitude: longitude,
                     );
                     _snack('Event created!', RoverColors.primary);
                   }
@@ -327,16 +437,18 @@ class _EventsTabState extends State<_EventsTab> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDS) => AlertDialog(
           title: Text('Assign Driver\n$eventName',
-              style: GoogleFonts.inter(
-                  fontSize: 15, fontWeight: FontWeight.w700)),
+              style:
+                  GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700)),
           content: DropdownButton<String>(
             value: selectedId,
             hint: const Text('Select a driver'),
             isExpanded: true,
-            items: _drivers.map((d) => DropdownMenuItem(
-              value: d['id'] as String,
-              child: Text(d['full_name'] as String? ?? 'Driver'),
-            )).toList(),
+            items: _drivers
+                .map((d) => DropdownMenuItem(
+                      value: d['id'] as String,
+                      child: Text(d['full_name'] as String? ?? 'Driver'),
+                    ))
+                .toList(),
             onChanged: (v) => setDS(() => selectedId = v),
           ),
           actions: [
@@ -345,8 +457,8 @@ class _EventsTabState extends State<_EventsTab> {
               onPressed: () => Navigator.of(ctx).pop(),
             ),
             FilledButton(
-              style: FilledButton.styleFrom(
-                  backgroundColor: RoverColors.primary),
+              style:
+                  FilledButton.styleFrom(backgroundColor: RoverColors.primary),
               onPressed: selectedId == null
                   ? null
                   : () async {
@@ -400,10 +512,8 @@ class _EventsTabState extends State<_EventsTab> {
                     shrinkWrap: true,
                     itemCount: attendees.length,
                     itemBuilder: (_, i) {
-                      final profile =
-                          attendees[i]['profiles'] as Map? ?? {};
-                      final name =
-                          profile['full_name'] as String? ?? 'User';
+                      final profile = attendees[i]['profiles'] as Map? ?? {};
+                      final name = profile['full_name'] as String? ?? 'User';
                       final phone = profile['phone'] as String?;
                       return ListTile(
                         dense: true,
@@ -442,8 +552,8 @@ class _EventsTabState extends State<_EventsTab> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Cancel Event?'),
-        content: Text(
-            'This will cancel "$name". Attendees will no longer see it.'),
+        content:
+            Text('This will cancel "$name". Attendees will no longer see it.'),
         actions: [
           TextButton(
               onPressed: () => Navigator.of(ctx).pop(false),
@@ -477,8 +587,8 @@ class _EventsTabState extends State<_EventsTab> {
 
   void _snack(String msg, Color color) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(msg), backgroundColor: color));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(msg), backgroundColor: color));
   }
 
   @override
@@ -680,7 +790,8 @@ class _EventsTabState extends State<_EventsTab> {
                                       label: 'Edit',
                                       onPressed: _isActing
                                           ? null
-                                          : () => _showEventDialog(existing: ev),
+                                          : () =>
+                                              _showEventDialog(existing: ev),
                                     ),
                                     _ActionChip(
                                       icon: Icons.cancel,
@@ -794,7 +905,9 @@ class _MembersTabState extends State<_MembersTab> {
                 'No members yet.\nShare the invite link from the Share tab.',
                 textAlign: TextAlign.center,
                 style: GoogleFonts.inter(
-                    color: RoverColors.textSecondary, fontSize: 15, height: 1.6),
+                    color: RoverColors.textSecondary,
+                    fontSize: 15,
+                    height: 1.6),
               ),
             ],
           ),
@@ -802,9 +915,9 @@ class _MembersTabState extends State<_MembersTab> {
       );
     }
 
-    final admins  = _members.where((m) => m['role'] == 'admin').toList();
+    final admins = _members.where((m) => m['role'] == 'admin').toList();
     final drivers = _members.where((m) => m['role'] == 'driver').toList();
-    final users   = _members.where((m) => m['role'] == 'user').toList();
+    final users = _members.where((m) => m['role'] == 'user').toList();
 
     return RefreshIndicator(
       onRefresh: _load,
@@ -812,13 +925,14 @@ class _MembersTabState extends State<_MembersTab> {
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
         children: [
           if (admins.isNotEmpty) ...[
-            _sectionHeader('Administrators', Icons.manage_accounts,
-                RoverColors.secondary),
+            _sectionHeader(
+                'Administrators', Icons.manage_accounts, RoverColors.secondary),
             ...admins.map((m) => _memberTile(m)),
             const SizedBox(height: 8),
           ],
           if (drivers.isNotEmpty) ...[
-            _sectionHeader('Drivers', Icons.directions_bus, RoverColors.secondary),
+            _sectionHeader(
+                'Drivers', Icons.directions_bus, RoverColors.secondary),
             ...drivers.map((m) => _memberTile(m)),
             const SizedBox(height: 8),
           ],
@@ -850,8 +964,8 @@ class _MembersTabState extends State<_MembersTab> {
   }
 
   Widget _memberTile(Map<String, dynamic> m) {
-    final name  = m['full_name'] as String? ?? 'Unknown';
-    final phone = m['phone']     as String?;
+    final name = m['full_name'] as String? ?? 'Unknown';
+    final phone = m['phone'] as String?;
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
@@ -876,8 +990,8 @@ class _MembersTabState extends State<_MembersTab> {
           ),
         ),
         title: Text(name,
-            style: GoogleFonts.inter(
-                fontSize: 14, fontWeight: FontWeight.w600)),
+            style:
+                GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600)),
         subtitle: phone != null
             ? Text(phone,
                 style: GoogleFonts.inter(
@@ -885,7 +999,8 @@ class _MembersTabState extends State<_MembersTab> {
             : null,
         trailing: phone != null
             ? IconButton(
-                icon: Icon(Icons.copy, size: 16, color: RoverColors.textSecondary),
+                icon: Icon(Icons.copy,
+                    size: 16, color: RoverColors.textSecondary),
                 tooltip: 'Copy phone',
                 onPressed: () => Clipboard.setData(ClipboardData(text: phone)),
               )
@@ -909,8 +1024,12 @@ class _ShareTab extends StatefulWidget {
 class _ShareTabState extends State<_ShareTab> {
   Map<String, dynamic>? _org;
   List<Map<String, dynamic>> _pendingRequests = [];
-  bool _isLoading   = true;
+  List<Map<String, dynamic>> _allowlist = [];
+  bool _isLoading = true;
   bool _isResetting = false;
+  bool _isSavingSettings = false;
+  bool _isAddingEmail = false;
+  final _allowlistEmailCtrl = TextEditingController();
 
   // M-9: realtime channel for incoming join requests
   RealtimeChannel? _requestsChannel;
@@ -926,6 +1045,7 @@ class _ShareTabState extends State<_ShareTab> {
   @override
   void dispose() {
     _requestsChannel?.unsubscribe();
+    _allowlistEmailCtrl.dispose();
     super.dispose();
   }
 
@@ -935,12 +1055,14 @@ class _ShareTabState extends State<_ShareTab> {
       final results = await Future.wait([
         OrgService.getMyOrg(),
         OrgService.getPendingRequests(),
+        OrgService.getAllowlist(),
       ]);
       if (mounted) {
         final org = results[0] as Map<String, dynamic>?;
         setState(() {
-          _org             = org;
+          _org = org;
           _pendingRequests = results[1] as List<Map<String, dynamic>>;
+          _allowlist = results[2] as List<Map<String, dynamic>>;
         });
 
         final orgId = org?['id'] as String?;
@@ -970,8 +1092,14 @@ class _ShareTabState extends State<_ShareTab> {
     } catch (_) {}
   }
 
-  String get _inviteUrl =>
-      '$_baseUrl${_org?['org_token'] ?? ''}';
+  String get _inviteUrl => '$_baseUrl${_org?['org_token'] ?? ''}';
+
+  String get _joinPolicy => _org?['join_policy'] as String? ?? 'open';
+
+  String get _driverJoinPolicy =>
+      _org?['driver_join_policy'] as String? ?? 'approval';
+
+  bool get _searchable => _org?['searchable'] as bool? ?? true;
 
   Future<void> _shareLink() async {
     await Share.share(
@@ -1003,8 +1131,8 @@ class _ShareTabState extends State<_ShareTab> {
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: RoverColors.error),
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Reset Link',
-                style: TextStyle(color: Colors.white)),
+            child:
+                const Text('Reset Link', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -1017,11 +1145,83 @@ class _ShareTabState extends State<_ShareTab> {
       await _load();
     } catch (e) {
       if (mounted) {
-        showErrorDialog(
-            context, e.toString().replaceFirst('Exception: ', ''));
+        showErrorDialog(context, e.toString().replaceFirst('Exception: ', ''));
       }
     } finally {
       if (mounted) setState(() => _isResetting = false);
+    }
+  }
+
+  Future<void> _saveAccessSettings({
+    String? joinPolicy,
+    String? driverJoinPolicy,
+    bool? searchable,
+  }) async {
+    setState(() => _isSavingSettings = true);
+    try {
+      await OrgService.updateAccessSettings(
+        joinPolicy: joinPolicy ?? _joinPolicy,
+        driverJoinPolicy: driverJoinPolicy ?? _driverJoinPolicy,
+        searchable: searchable ?? _searchable,
+      );
+      await _load();
+    } catch (e) {
+      if (mounted) {
+        showErrorDialog(context, e.toString().replaceFirst('Exception: ', ''));
+      }
+    } finally {
+      if (mounted) setState(() => _isSavingSettings = false);
+    }
+  }
+
+  Future<void> _addAllowlistEmail() async {
+    final email = _allowlistEmailCtrl.text.trim();
+    if (email.isEmpty) return;
+
+    setState(() => _isAddingEmail = true);
+    try {
+      await OrgService.addAllowlistEmail(email);
+      _allowlistEmailCtrl.clear();
+      final rows = await OrgService.getAllowlist();
+      if (mounted) setState(() => _allowlist = rows);
+    } catch (e) {
+      if (mounted) {
+        showErrorDialog(context, e.toString().replaceFirst('Exception: ', ''));
+      }
+    } finally {
+      if (mounted) setState(() => _isAddingEmail = false);
+    }
+  }
+
+  Future<void> _removeAllowlistEmail(int id, String email) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Remove Email?'),
+        content: Text('$email will no longer be allowed to join by allowlist.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: RoverColors.error),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Remove', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      await OrgService.removeAllowlistEmail(id);
+      final rows = await OrgService.getAllowlist();
+      if (mounted) setState(() => _allowlist = rows);
+    } catch (e) {
+      if (mounted) {
+        showErrorDialog(context, e.toString().replaceFirst('Exception: ', ''));
+      }
     }
   }
 
@@ -1037,8 +1237,7 @@ class _ShareTabState extends State<_ShareTab> {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(
-                backgroundColor: RoverColors.primary),
+            style: FilledButton.styleFrom(backgroundColor: RoverColors.primary),
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text('Approve'),
           ),
@@ -1051,8 +1250,7 @@ class _ShareTabState extends State<_ShareTab> {
       await _load();
     } catch (e) {
       if (mounted) {
-        showErrorDialog(
-            context, e.toString().replaceFirst('Exception: ', ''));
+        showErrorDialog(context, e.toString().replaceFirst('Exception: ', ''));
       }
     }
   }
@@ -1071,8 +1269,7 @@ class _ShareTabState extends State<_ShareTab> {
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: RoverColors.error),
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Reject',
-                style: TextStyle(color: Colors.white)),
+            child: const Text('Reject', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -1083,8 +1280,7 @@ class _ShareTabState extends State<_ShareTab> {
       await _load();
     } catch (e) {
       if (mounted) {
-        showErrorDialog(
-            context, e.toString().replaceFirst('Exception: ', ''));
+        showErrorDialog(context, e.toString().replaceFirst('Exception: ', ''));
       }
     }
   }
@@ -1175,7 +1371,8 @@ class _ShareTabState extends State<_ShareTab> {
                     ),
                   ),
                   IconButton(
-                    icon: Icon(Icons.copy, size: 18, color: RoverColors.primary),
+                    icon:
+                        Icon(Icons.copy, size: 18, color: RoverColors.primary),
                     tooltip: 'Copy link',
                     onPressed: _copyLink,
                   ),
@@ -1229,6 +1426,31 @@ class _ShareTabState extends State<_ShareTab> {
               ),
             ),
 
+            const SizedBox(height: 24),
+            _AccessControlsCard(
+              joinPolicy: _joinPolicy,
+              driverJoinPolicy: _driverJoinPolicy,
+              searchable: _searchable,
+              isSaving: _isSavingSettings,
+              onJoinPolicyChanged: (value) =>
+                  _saveAccessSettings(joinPolicy: value),
+              onDriverPolicyChanged: (value) =>
+                  _saveAccessSettings(driverJoinPolicy: value),
+              onSearchableChanged: (value) =>
+                  _saveAccessSettings(searchable: value),
+            ),
+
+            if (_joinPolicy == 'allowlist') ...[
+              const SizedBox(height: 16),
+              _AllowlistCard(
+                controller: _allowlistEmailCtrl,
+                allowlist: _allowlist,
+                isAdding: _isAddingEmail,
+                onAdd: _addAllowlistEmail,
+                onRemove: _removeAllowlistEmail,
+              ),
+            ],
+
             // Pending join requests
             if (_pendingRequests.isNotEmpty) ...[
               const SizedBox(height: 28),
@@ -1251,12 +1473,14 @@ class _ShareTabState extends State<_ShareTab> {
               ),
               const SizedBox(height: 10),
               ...(_pendingRequests.map((req) {
-                final reqId  = req['id'] as int;
+                final reqId = req['id'] as int;
                 final profile =
                     (req['profiles'] as Map?)?.cast<String, dynamic>() ?? {};
-                final name  = profile['full_name'] as String? ?? 'Unknown';
-                final phone = profile['phone']     as String?;
-                final date  = req['created_at'] != null
+                final name = profile['full_name'] as String? ?? 'Unknown';
+                final phone = profile['phone'] as String?;
+                final requestedRole =
+                    req['requested_role'] as String? ?? 'user';
+                final date = req['created_at'] != null
                     ? DateTime.tryParse(req['created_at'] as String)
                     : null;
 
@@ -1301,6 +1525,12 @@ class _ShareTabState extends State<_ShareTab> {
                                     style: GoogleFonts.inter(
                                         fontSize: 12,
                                         color: RoverColors.textSecondary)),
+                              Text(
+                                'Requested role: ${requestedRole == 'driver' ? 'Driver' : 'Attendee'}',
+                                style: GoogleFonts.inter(
+                                    fontSize: 11,
+                                    color: RoverColors.textSecondary),
+                              ),
                               if (date != null)
                                 Text(
                                   'Requested ${date.day}/${date.month}/${date.year}',
@@ -1338,6 +1568,273 @@ class _ShareTabState extends State<_ShareTab> {
             const _HowItWorksCard(),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _AccessControlsCard extends StatelessWidget {
+  const _AccessControlsCard({
+    required this.joinPolicy,
+    required this.driverJoinPolicy,
+    required this.searchable,
+    required this.isSaving,
+    required this.onJoinPolicyChanged,
+    required this.onDriverPolicyChanged,
+    required this.onSearchableChanged,
+  });
+
+  final String joinPolicy;
+  final String driverJoinPolicy;
+  final bool searchable;
+  final bool isSaving;
+  final ValueChanged<String> onJoinPolicyChanged;
+  final ValueChanged<String> onDriverPolicyChanged;
+  final ValueChanged<bool> onSearchableChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: RoverColors.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.admin_panel_settings,
+                  size: 18, color: RoverColors.primary),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Access controls',
+                  style: GoogleFonts.inter(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                    color: RoverColors.textPrimary,
+                  ),
+                ),
+              ),
+              if (isSaving)
+                const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Text(
+            'Attendees',
+            style: GoogleFonts.inter(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: RoverColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 6),
+          DropdownButtonFormField<String>(
+            initialValue: joinPolicy,
+            decoration: const InputDecoration(isDense: true),
+            items: const [
+              DropdownMenuItem(
+                value: 'open',
+                child: Text('Invite link joins immediately'),
+              ),
+              DropdownMenuItem(
+                value: 'approval',
+                child: Text('Invite link sends approval request'),
+              ),
+              DropdownMenuItem(
+                value: 'allowlist',
+                child: Text('Only approved email list can join'),
+              ),
+            ],
+            onChanged: isSaving
+                ? null
+                : (value) {
+                    if (value != null && value != joinPolicy) {
+                      onJoinPolicyChanged(value);
+                    }
+                  },
+          ),
+          const SizedBox(height: 14),
+          Text(
+            'Drivers and staff',
+            style: GoogleFonts.inter(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: RoverColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 6),
+          DropdownButtonFormField<String>(
+            initialValue: driverJoinPolicy,
+            decoration: const InputDecoration(isDense: true),
+            items: const [
+              DropdownMenuItem(
+                value: 'approval',
+                child: Text('Require admin approval'),
+              ),
+              DropdownMenuItem(
+                value: 'open',
+                child: Text('Invite link joins immediately'),
+              ),
+            ],
+            onChanged: isSaving
+                ? null
+                : (value) {
+                    if (value != null && value != driverJoinPolicy) {
+                      onDriverPolicyChanged(value);
+                    }
+                  },
+          ),
+          const SizedBox(height: 10),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            value: searchable,
+            onChanged: isSaving ? null : onSearchableChanged,
+            title: Text(
+              'Show in organisation search',
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            subtitle: Text(
+              'Turn this off for private conferences and closed groups.',
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                color: RoverColors.textSecondary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AllowlistCard extends StatelessWidget {
+  const _AllowlistCard({
+    required this.controller,
+    required this.allowlist,
+    required this.isAdding,
+    required this.onAdd,
+    required this.onRemove,
+  });
+
+  final TextEditingController controller;
+  final List<Map<String, dynamic>> allowlist;
+  final bool isAdding;
+  final VoidCallback onAdd;
+  final void Function(int id, String email) onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Approved attendee emails',
+            style: GoogleFonts.inter(
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: RoverColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: controller,
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: const InputDecoration(
+                    hintText: 'attendee@example.com',
+                    isDense: true,
+                    prefixIcon: Icon(Icons.mail_outline, size: 18),
+                  ),
+                  onSubmitted: (_) => isAdding ? null : onAdd(),
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton.filled(
+                tooltip: 'Add email',
+                onPressed: isAdding ? null : onAdd,
+                icon: isAdding
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.add),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (allowlist.isEmpty)
+            Text(
+              'No emails added yet.',
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                color: RoverColors.textSecondary,
+              ),
+            )
+          else
+            ...allowlist.map((row) {
+              final id = row['id'] as int;
+              final email = row['email'] as String? ?? '';
+              final claimed = row['claimed'] as bool? ?? false;
+              return ListTile(
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                leading: Icon(
+                  claimed ? Icons.check_circle : Icons.radio_button_unchecked,
+                  color: claimed ? RoverColors.primary : RoverColors.outline,
+                  size: 18,
+                ),
+                title: Text(
+                  email,
+                  style: GoogleFonts.inter(fontSize: 13),
+                ),
+                subtitle: Text(
+                  claimed ? 'Claimed' : 'Available',
+                  style: GoogleFonts.inter(
+                    fontSize: 11,
+                    color: RoverColors.textSecondary,
+                  ),
+                ),
+                trailing: IconButton(
+                  tooltip: 'Remove email',
+                  icon: const Icon(Icons.delete_outline, size: 18),
+                  color: RoverColors.error,
+                  onPressed: () => onRemove(id, email),
+                ),
+              );
+            }),
+        ],
       ),
     );
   }
@@ -1390,7 +1887,7 @@ class _HowItWorksCard extends StatelessWidget {
 class _Step extends StatelessWidget {
   const _Step({required this.icon, required this.text});
   final IconData icon;
-  final String   text;
+  final String text;
 
   @override
   Widget build(BuildContext context) {

@@ -3,7 +3,9 @@
 // User actions: Subscribe / Unsubscribe, Request Pickup, view live ETA.
 
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:latlong2/latlong.dart';
 import '../services/event_service.dart';
 import '../services/pickup_service.dart';
 import '../theme/rover_theme.dart';
@@ -19,9 +21,9 @@ class EventDetailPage extends StatefulWidget {
 
 class _EventDetailPageState extends State<EventDetailPage> {
   Map<String, dynamic>? _event;
-  bool _isSubscribed  = false;
-  bool _isLoading     = true;
-  bool _isActing      = false;
+  bool _isSubscribed = false;
+  bool _isLoading = true;
+  bool _isActing = false;
   // Fix L-6: tracks whether this user has a pending/en_route pickup request
   // so the "Request Pickup" button is replaced with a persistent indicator.
   bool _hasPickup = false;
@@ -41,9 +43,9 @@ class _EventDetailPageState extends State<EventDetailPage> {
         PickupService.hasActivePickup(widget.eventId),
       ]);
       setState(() {
-        _event        = results[0] as Map<String, dynamic>;
+        _event = results[0] as Map<String, dynamic>;
         _isSubscribed = results[1] as bool;
-        _hasPickup    = results[2] as bool;
+        _hasPickup = results[2] as bool;
       });
     } catch (e) {
       _showError(e.toString().replaceFirst('Exception: ', ''));
@@ -86,6 +88,44 @@ class _EventDetailPageState extends State<EventDetailPage> {
     }
   }
 
+  Future<void> _cancelPickup() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cancel Pickup?'),
+        content: const Text(
+          'Your pickup request will be removed from the driver route.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Keep Pickup'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: RoverColors.error),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text(
+              'Cancel Pickup',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+
+    setState(() => _isActing = true);
+    try {
+      await PickupService.cancelPickup(widget.eventId);
+      if (mounted) setState(() => _hasPickup = false);
+      _showSnack('Pickup cancelled.', RoverColors.secondary);
+    } catch (e) {
+      _showError(e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _isActing = false);
+    }
+  }
+
   void _showError(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -121,8 +161,8 @@ class _EventDetailPageState extends State<EventDetailPage> {
         : null;
     final eventName = _event!['name'] as String? ?? 'Event Details';
     final eventType = _event!['event_type'] as String?;
-    final location  = _event!['location_name'] as String?;
-    final desc      = _event!['description'] as String?;
+    final location = _event!['location_name'] as String?;
+    final desc = _event!['description'] as String?;
 
     return Scaffold(
       backgroundColor: RoverColors.surface,
@@ -298,6 +338,8 @@ class _EventDetailPageState extends State<EventDetailPage> {
                       );
                     }
 
+                    final driverId = _event!['assigned_driver_id'] as String?;
+
                     return _InfoCard(
                       color: RoverColors.primaryContainer,
                       children: [
@@ -332,6 +374,10 @@ class _EventDetailPageState extends State<EventDetailPage> {
                             ),
                           ],
                         ),
+                        if (driverId != null) ...[
+                          const SizedBox(height: 14),
+                          _DriverLocationPanel(driverId: driverId),
+                        ],
                       ],
                     );
                   },
@@ -384,12 +430,15 @@ class _EventDetailPageState extends State<EventDetailPage> {
                                   Icon(Icons.check_circle,
                                       color: RoverColors.primary, size: 18),
                                   const SizedBox(width: 6),
-                                  Text(
-                                    'Pickup Requested',
-                                    style: GoogleFonts.inter(
-                                      color: RoverColors.primary,
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 14,
+                                  Flexible(
+                                    child: Text(
+                                      'Pickup Requested',
+                                      overflow: TextOverflow.ellipsis,
+                                      style: GoogleFonts.inter(
+                                        color: RoverColors.primary,
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 13,
+                                      ),
                                     ),
                                   ),
                                 ],
@@ -403,8 +452,7 @@ class _EventDetailPageState extends State<EventDetailPage> {
                               label: Text(
                                 'Request Pickup',
                                 style: GoogleFonts.inter(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600),
+                                    fontSize: 14, fontWeight: FontWeight.w600),
                               ),
                               style: FilledButton.styleFrom(
                                 backgroundColor: RoverColors.primary,
@@ -418,12 +466,158 @@ class _EventDetailPageState extends State<EventDetailPage> {
                     ),
                   ],
                 ),
+                if (_hasPickup) ...[
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: _isActing ? null : _cancelPickup,
+                      icon: const Icon(Icons.cancel_outlined, size: 18),
+                      label: Text(
+                        'Cancel Pickup',
+                        style: GoogleFonts.inter(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: RoverColors.error,
+                        side: const BorderSide(color: RoverColors.error),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 8),
               ]),
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+class _DriverLocationPanel extends StatelessWidget {
+  const _DriverLocationPanel({required this.driverId});
+
+  final String driverId;
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<Map<String, dynamic>?>(
+      stream: PickupService.listenToDriverLocation(driverId),
+      builder: (context, snapshot) {
+        final location = snapshot.data;
+        if (location == null) {
+          return Row(
+            children: [
+              Icon(Icons.location_searching,
+                  size: 16, color: RoverColors.textSecondary),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Driver location will appear when the route starts.',
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    color: RoverColors.textSecondary,
+                  ),
+                ),
+              ),
+            ],
+          );
+        }
+
+        final lat = location['latitude'] as double;
+        final lon = location['longitude'] as double;
+        final point = LatLng(lat, lon);
+        final driverName = location['full_name'] as String? ?? 'Driver';
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.near_me, size: 16, color: RoverColors.primary),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '$driverName location',
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: RoverColors.primary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: SizedBox(
+                height: 150,
+                child: FlutterMap(
+                  options: MapOptions(
+                    initialCenter: point,
+                    initialZoom: 14,
+                    interactionOptions: const InteractionOptions(
+                      flags: InteractiveFlag.drag |
+                          InteractiveFlag.pinchZoom |
+                          InteractiveFlag.doubleTapZoom,
+                    ),
+                  ),
+                  children: [
+                    TileLayer(
+                      urlTemplate:
+                          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      userAgentPackageName: 'com.jehmni.roverfront',
+                    ),
+                    MarkerLayer(
+                      markers: [
+                        Marker(
+                          point: point,
+                          width: 42,
+                          height: 42,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: RoverColors.primary,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 3),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.2),
+                                  blurRadius: 8,
+                                ),
+                              ],
+                            ),
+                            child: const Icon(
+                              Icons.directions_bus,
+                              color: Colors.white,
+                              size: 20,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '${lat.toStringAsFixed(5)}, ${lon.toStringAsFixed(5)}',
+              style: GoogleFonts.inter(
+                fontSize: 11,
+                color: RoverColors.textSecondary,
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
@@ -482,7 +676,8 @@ class _InfoRow extends StatelessWidget {
             text,
             style: GoogleFonts.inter(
               fontSize: small ? 12 : 14,
-              color: small ? RoverColors.textSecondary : RoverColors.textPrimary,
+              color:
+                  small ? RoverColors.textSecondary : RoverColors.textPrimary,
             ),
           ),
         ),

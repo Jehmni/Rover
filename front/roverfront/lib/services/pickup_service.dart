@@ -5,12 +5,28 @@
 //   M-10 — cancelPickup now filters status != 'completed' (can't delete completed pickups)
 //   M-3  — getPickupProfiles() fetches userId→profile map for realtime stream cross-reference
 //   L-2  — markEnRoute() added so driver can transition pending → en_route
+//   P1.5 — driver status changes now go through update-pickup-status notifications
 //   H-3  — UNIQUE(event_id, user_id) now enforced at DB; client check remains as UX guard
 
 import 'package:geolocator/geolocator.dart';
 import '../main.dart';
 
 class PickupService {
+  static int _lastRangeIndex(int offset, int limit) {
+    final safeLimit = limit.clamp(1, 100).toInt();
+    return offset + safeLimit - 1;
+  }
+
+  static Map<String, double>? _pointFromGeoJson(dynamic point) {
+    if (point is! Map) return null;
+    final coordinates = point['coordinates'];
+    if (coordinates is! List || coordinates.length < 2) return null;
+    final lon = (coordinates[0] as num?)?.toDouble();
+    final lat = (coordinates[1] as num?)?.toDouble();
+    if (lat == null || lon == null) return null;
+    return {'latitude': lat, 'longitude': lon};
+  }
+
   // ─────────────────────────────────────────────────────────
   // REQUEST A PICKUP
   // User submits their current GPS location for an event.
@@ -56,10 +72,10 @@ class PickupService {
 
     // PostGIS WKT: 'POINT(longitude latitude)'
     await supabase.from('pickup_requests').insert({
-      'event_id':        eventId,
-      'user_id':         userId,
+      'event_id': eventId,
+      'user_id': userId,
       'pickup_location': 'POINT(${position.longitude} ${position.latitude})',
-      'status':          'pending',
+      'status': 'pending',
     });
   }
 
@@ -99,7 +115,8 @@ class PickupService {
       throw Exception('No pickup request found for this event.');
     }
     if (existing['status'] == 'completed') {
-      throw Exception('This pickup has already been completed and cannot be cancelled.');
+      throw Exception(
+          'This pickup has already been completed and cannot be cancelled.');
     }
 
     await supabase
@@ -131,15 +148,17 @@ class PickupService {
       locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
     );
 
-    if (position.latitude < -90 || position.latitude > 90 ||
-        position.longitude < -180 || position.longitude > 180) {
+    if (position.latitude < -90 ||
+        position.latitude > 90 ||
+        position.longitude < -180 ||
+        position.longitude > 180) {
       throw Exception('Invalid GPS coordinates from device.');
     }
 
     final response = await supabase.functions.invoke(
       'schedule-pickup',
       body: {
-        'event_id':   eventId,
+        'event_id': eventId,
         'driver_lat': position.latitude,
         'driver_lon': position.longitude,
       },
@@ -162,12 +181,17 @@ class PickupService {
   // GET PICKUP REQUESTS (sorted by pickup_order)
   // Fix M-5: fcm_token removed — it must not be sent to driver devices.
   // ─────────────────────────────────────────────────────────
-  static Future<List<Map<String, dynamic>>> getPickupRequests(int eventId) async {
+  static Future<List<Map<String, dynamic>>> getPickupRequests(
+    int eventId, {
+    int offset = 0,
+    int limit = 100,
+  }) async {
     final data = await supabase
         .from('pickup_requests')
         .select('*, profiles!user_id(full_name, phone)')
         .eq('event_id', eventId)
-        .order('pickup_order', ascending: true, nullsFirst: false);
+        .order('pickup_order', ascending: true, nullsFirst: false)
+        .range(offset, _lastRangeIndex(offset, limit));
     return List<Map<String, dynamic>>.from(data);
   }
 
@@ -185,12 +209,12 @@ class PickupService {
 
     final Map<String, Map<String, dynamic>> result = {};
     for (final row in data as List) {
-      final userId  = row['user_id'] as String?;
+      final userId = row['user_id'] as String?;
       final profile = row['profiles'] as Map?;
       if (userId != null && profile != null) {
         result[userId] = {
           'full_name': profile['full_name'],
-          'phone':     profile['phone'],
+          'phone': profile['phone'],
         };
       }
     }
@@ -199,23 +223,60 @@ class PickupService {
 
   // ─────────────────────────────────────────────────────────
   // MARK A PICKUP AS EN_ROUTE
-  // Fix L-2: driver transitions pending → en_route before arrival.
+  // Driver transition is handled by an Edge Function so FCM tokens
+  // and next-stop notification logic stay server-side.
   // ─────────────────────────────────────────────────────────
   static Future<void> markEnRoute(int pickupRequestId) async {
-    await supabase
-        .from('pickup_requests')
-        .update({'status': 'en_route'})
-        .eq('id', pickupRequestId);
+    await _updatePickupStatus(pickupRequestId, 'en_route');
   }
 
   // ─────────────────────────────────────────────────────────
   // MARK A PICKUP AS COMPLETED
   // ─────────────────────────────────────────────────────────
   static Future<void> markCompleted(int pickupRequestId) async {
+    await _updatePickupStatus(pickupRequestId, 'completed');
+  }
+
+  static Future<void> _updatePickupStatus(
+      int pickupRequestId, String status) async {
+    final response = await supabase.functions.invoke(
+      'update-pickup-status',
+      body: {
+        'pickup_request_id': pickupRequestId,
+        'status': status,
+      },
+    );
+
+    if (response.data == null) {
+      throw Exception('update-pickup-status function returned no data.');
+    }
+
+    if (response.data is Map && response.data['error'] != null) {
+      throw Exception(response.data['error'].toString());
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────
+  // UPDATE DRIVER LOCATION
+  // Persists the current driver's last-known GPS location for
+  // attendee tracking and operational visibility.
+  // ─────────────────────────────────────────────────────────
+  static Future<void> updateDriverLocation({
+    required double latitude,
+    required double longitude,
+  }) async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) throw Exception('You must be logged in.');
+    if (latitude < -90 ||
+        latitude > 90 ||
+        longitude < -180 ||
+        longitude > 180) {
+      throw Exception('Invalid GPS coordinates from device.');
+    }
+
     await supabase
-        .from('pickup_requests')
-        .update({'status': 'completed'})
-        .eq('id', pickupRequestId);
+        .from('profiles')
+        .update({'location': 'POINT($longitude $latitude)'}).eq('id', userId);
   }
 
   // ─────────────────────────────────────────────────────────
@@ -244,13 +305,35 @@ class PickupService {
         .eq('event_id', eventId)
         .map((rows) {
           final active = rows.cast<Map<String, dynamic>>().where(
-            (r) =>
-                r['user_id'] == userId &&
-                r['status'] != 'completed',  // hide completed rows from ETA card
-          );
+                (r) =>
+                    r['user_id'] == userId &&
+                    r['status'] !=
+                        'completed', // hide completed rows from ETA card
+              );
           return active.isNotEmpty
               ? Map<String, dynamic>.from(active.first)
               : null;
+        });
+  }
+
+  // ─────────────────────────────────────────────────────────
+  // REALTIME — attendee watches assigned driver's last location
+  // ─────────────────────────────────────────────────────────
+  static Stream<Map<String, dynamic>?> listenToDriverLocation(String driverId) {
+    return supabase
+        .from('profiles')
+        .stream(primaryKey: ['id'])
+        .eq('id', driverId)
+        .map((rows) {
+          if (rows.isEmpty) return null;
+          final row = Map<String, dynamic>.from(rows.first);
+          final point = _pointFromGeoJson(row['location']);
+          if (point == null) return null;
+          return {
+            'latitude': point['latitude'],
+            'longitude': point['longitude'],
+            'full_name': row['full_name'],
+          };
         });
   }
 }

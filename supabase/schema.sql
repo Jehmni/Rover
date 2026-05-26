@@ -1,6 +1,11 @@
 -- ═══════════════════════════════════════════════════════════════
 -- ROVER — Supabase PostgreSQL Schema  (multi-tenant, v2)
 --
+-- LEGACY/REFERENCE ONLY: use supabase/schema_restore.sql for fresh
+-- project bootstrap. schema_restore.sql includes token joins,
+-- join requests, conference allowlists, and security hardening that
+-- are not represented in this historical v2 file.
+--
 -- Run the ENTIRE file in: Supabase Dashboard > SQL Editor
 -- Safe to re-run: uses IF NOT EXISTS / OR REPLACE / DROP IF EXISTS
 --
@@ -441,7 +446,12 @@ CREATE POLICY "profiles_insert_own"
 
 CREATE POLICY "profiles_update_own"
   ON public.profiles FOR UPDATE
-  USING (auth.uid() = id);
+  USING (auth.uid() = id)
+  WITH CHECK (
+    auth.uid() = id
+    AND role = public.get_my_role()
+    AND org_id IS NOT DISTINCT FROM public.get_my_org_id()
+  );
 
 -- ── ORG INVITES ───────────────────────────────────────────────
 -- Only admins can read their org's invite codes.
@@ -512,7 +522,15 @@ CREATE POLICY "subs_select_admin"
 
 CREATE POLICY "subs_insert_own"
   ON public.event_subscriptions FOR INSERT
-  WITH CHECK (auth.uid() = user_id);
+  WITH CHECK (
+    auth.uid() = user_id
+    AND EXISTS (
+      SELECT 1 FROM public.events e
+      WHERE e.id = event_id
+        AND e.org_id = public.get_my_org_id()
+        AND e.status = 'active'
+    )
+  );
 
 CREATE POLICY "subs_delete_own"
   ON public.event_subscriptions FOR DELETE
@@ -540,11 +558,42 @@ CREATE POLICY "pickups_select_driver"
 
 CREATE POLICY "pickups_insert_own"
   ON public.pickup_requests FOR INSERT
-  WITH CHECK (auth.uid() = user_id);
+  WITH CHECK (
+    auth.uid() = user_id
+    AND EXISTS (
+      SELECT 1 FROM public.events e
+      WHERE e.id = event_id
+        AND e.org_id = public.get_my_org_id()
+        AND e.status = 'active'
+    )
+    AND EXISTS (
+      SELECT 1 FROM public.event_subscriptions s
+      WHERE s.event_id = event_id
+        AND s.user_id = auth.uid()
+    )
+  );
 
 CREATE POLICY "pickups_update_own"
   ON public.pickup_requests FOR UPDATE
-  USING (auth.uid() = user_id);
+  USING (
+    auth.uid() = user_id
+    AND EXISTS (
+      SELECT 1 FROM public.events e
+      WHERE e.id = event_id
+        AND e.org_id = public.get_my_org_id()
+    )
+  )
+  WITH CHECK (
+    auth.uid() = user_id
+    AND status = 'pending'
+    AND pickup_order IS NULL
+    AND eta_minutes IS NULL
+    AND EXISTS (
+      SELECT 1 FROM public.events e
+      WHERE e.id = event_id
+        AND e.org_id = public.get_my_org_id()
+    )
+  );
 
 CREATE POLICY "pickups_update_driver"
   ON public.pickup_requests FOR UPDATE
@@ -554,5 +603,15 @@ CREATE POLICY "pickups_update_driver"
       SELECT 1 FROM public.events e
       WHERE e.id = event_id
         AND e.assigned_driver_id = auth.uid()
+        AND e.org_id = public.get_my_org_id()
+    )
+  )
+  WITH CHECK (
+    public.get_my_role() = 'driver'
+    AND EXISTS (
+      SELECT 1 FROM public.events e
+      WHERE e.id = event_id
+        AND e.assigned_driver_id = auth.uid()
+        AND e.org_id = public.get_my_org_id()
     )
   );

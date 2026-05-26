@@ -1,6 +1,6 @@
 // user_home_page.dart
 // Home screen for role = 'user' (event attendee).
-// Data layer wired to EventService — no HTTP calls to the old Flask server.
+// Data layer wired to EventService.
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';

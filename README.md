@@ -1,33 +1,37 @@
 # Rover
-Event Pickup Management System
+Event pickup management for multi-tenant organisations.
 
-Description:
-The Event Pickup Management System is a comprehensive Flask-based application designed to streamline the process of managing event pickups, driver assignments, and user registrations. This system provides a user-friendly interface for event organizers, drivers, and attendees to efficiently coordinate transportation logistics for various events.
+## Active Architecture
+- Flutter mobile app: `front/roverfront`
+- Supabase database + RLS + RPCs: `supabase/schema_restore.sql` (canonical bootstrap)
+- Supabase edge functions (pickup scheduling, pickup status transitions, notifications): `supabase/functions`
+- Firebase Cloud Messaging (HTTP v1 via service account secret)
 
-Key Features:
+## Core Features
+- Email/password auth with role-based access (`user`, `driver`, `admin`)
+- Organisation creation/join flow with invite tokens and QR/deep links
+- Event management and driver assignment (admin)
+- Event browse/subscribe/request pickup (user)
+- Route ordering and ETA updates for assigned driver
+- Push notifications for rider and driver status changes
 
-User Registration and Authentication: Users can create accounts, log in securely, and manage their profiles.
-Event Management: Organizers can create, update, and cancel events, while attendees can view event details and register for pickups.
-Driver Management: Bus drivers can register, log in, and view their assigned pickups.
-Pickup Scheduling: Attendees can schedule pickups for events, specifying their location and desired pickup time.
-Route Calculation: The system calculates optimal routes for drivers using Dijkstra's Algorithm, ensuring efficient transportation for attendees.
-Real-Time Notifications: Attendees and drivers receive real-time notifications for pickup confirmations, updates, and cancellations.
-How to Use:
+## Quick Start (Flutter + Supabase)
+1. Install Flutter and run `flutter doctor`.
+2. Open `front/roverfront` and run `flutter pub get`.
+3. Supply required Dart defines:
+   - `SUPABASE_URL`
+   - `SUPABASE_ANON_KEY`
+4. Run app:
+   - `flutter run --dart-define=SUPABASE_URL=... --dart-define=SUPABASE_ANON_KEY=...`
+5. Apply database schema in Supabase SQL editor:
+   - `supabase/schema_restore.sql` (canonical single-file bootstrap)
+   - Migration files `schema_v3...schema_v7` are retained for historical/incremental patching.
 
-Clone the repository to your local machine.
-Install the required dependencies using pip install -r requirements.txt.
-Configure the database settings in config.py.
-Run the application using python app.py.
-Access the application through your web browser at http://localhost:5000.
+## Environment and Secrets
+- Client app uses Dart defines for Supabase URL/anon key.
+- Edge functions require Supabase secrets (service-role key, Firebase service account JSON, and `INTERNAL_NOTIFY_TOKEN`).
+- Deploy all production edge functions before release: `schedule-pickup`, `update-pickup-status`, `review-join-request`, `notify-event-subscribers`, and `send-notification`.
+- See `.env.example` for expected values and naming.
 
-Roadmap:
-
-Implement an admin dashboard for managing users, events, and drivers.
-Enhance the user interface for improved usability and accessibility.
-Integrate a mapping API for visualizing event locations and driver routes.
-Expand the notification system to support email and SMS notifications.
-License:
-This project is licensed under the MIT License. See the LICENSE file for details.
-
-Feedback and Support:
-If you have any questions, suggestions, or encounter any issues while using the application, please don't hesitate to open an issue on GitHub or reach out to the project maintainers.
+## Notes
+- This repository is Flutter + Supabase only.

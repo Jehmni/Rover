@@ -119,6 +119,30 @@ async function getGoogleAccessToken(sa: ServiceAccount): Promise<string> {
 // ─────────────────────────────────────────────────────────────
 serve(async (req: Request) => {
   try {
+    if (req.method !== 'POST') {
+      return new Response(
+        JSON.stringify({ error: 'Method not allowed' }),
+        { status: 405, headers: { 'Content-Type': 'application/json' } },
+      )
+    }
+
+    // Internal-only endpoint guard:
+    // schedule-pickup includes this header using a secret from env.
+    const expectedInternalToken = Deno.env.get('INTERNAL_NOTIFY_TOKEN')
+    if (!expectedInternalToken) {
+      return new Response(
+        JSON.stringify({ error: 'INTERNAL_NOTIFY_TOKEN secret is not configured' }),
+        { status: 500, headers: { 'Content-Type': 'application/json' } },
+      )
+    }
+    const providedInternalToken = req.headers.get('x-internal-token')
+    if (!providedInternalToken || providedInternalToken !== expectedInternalToken) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized caller' }),
+        { status: 401, headers: { 'Content-Type': 'application/json' } },
+      )
+    }
+
     const { user_fcm_token, title, body } = await req.json()
 
     if (!user_fcm_token || !title || !body) {

@@ -15,6 +15,8 @@
 //   orgToken    — UUID from deep link; pre-fills the token field on Tab B
 //   orgName     — display name shown in the banner
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -431,7 +433,27 @@ class _JoinOrgTabState extends State<_JoinOrgTab> {
         token: token,
         role:  widget.role,
       );
+      await AuthService.registerFcmToken();
       if (!mounted) return;
+
+      if (role == 'pending') {
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Request Sent'),
+            content: const Text(
+              'Your request has been sent to the organisation admin for approval.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+        return;
+      }
 
       Widget destination;
       switch (role) {
@@ -658,6 +680,8 @@ class _OrgSearchDialog extends StatefulWidget {
 
 class _OrgSearchDialogState extends State<_OrgSearchDialog> {
   final _searchCtrl = TextEditingController();
+  Timer? _searchDebounce;
+  int _searchSeq = 0;
   List<Map<String, dynamic>> _results = [];
   bool _isSearching  = false;
   bool _isRequesting = false;
@@ -666,23 +690,48 @@ class _OrgSearchDialogState extends State<_OrgSearchDialog> {
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _searchCtrl.dispose();
     super.dispose();
   }
 
+  void _onSearchChanged(String value) {
+    _searchDebounce?.cancel();
+    final q = value.trim();
+    if (q.isEmpty) {
+      setState(() {
+        _results = [];
+        _searchError = false;
+        _isSearching = false;
+      });
+      return;
+    }
+    _searchDebounce = Timer(const Duration(milliseconds: 300), () {
+      _search(q);
+    });
+  }
+
   Future<void> _search(String q) async {
-    if (q.trim().isEmpty) {
+    final query = q.trim();
+    if (query.isEmpty) {
       setState(() { _results = []; _searchError = false; });
       return;
     }
+    final requestId = ++_searchSeq;
     setState(() { _isSearching = true; _searchError = false; });
     try {
-      final results = await OrgService.searchOrgs(q);
-      if (mounted) setState(() => _results = results);
+      final results = await OrgService.searchOrgs(query);
+      if (mounted && requestId == _searchSeq) {
+        setState(() => _results = results);
+      }
     } catch (_) {
-      if (mounted) setState(() { _results = []; _searchError = true; });
+      if (mounted && requestId == _searchSeq) {
+        setState(() { _results = []; _searchError = true; });
+      }
     } finally {
-      if (mounted) setState(() => _isSearching = false);
+      if (mounted && requestId == _searchSeq) {
+        setState(() => _isSearching = false);
+      }
     }
   }
 
@@ -720,7 +769,7 @@ class _OrgSearchDialogState extends State<_OrgSearchDialog> {
                 hintText: 'Name or city…',
                 isDense: true,
               ),
-              onChanged: _search,
+              onChanged: _onSearchChanged,
             ),
             const SizedBox(height: 12),
             if (_isSearching)

@@ -89,9 +89,23 @@ serve(async (req: Request) => {
     // ── 1. Parse and validate input ───────────────────────────
     const { event_id, driver_lat, driver_lon } = await req.json()
 
-    if (!event_id || driver_lat == null || driver_lon == null) {
+    if (event_id == null || driver_lat == null || driver_lon == null) {
       return new Response(
         JSON.stringify({ error: 'event_id, driver_lat, and driver_lon are required' }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } },
+      )
+    }
+
+    if (!Number.isInteger(event_id) || event_id <= 0) {
+      return new Response(
+        JSON.stringify({ error: 'event_id must be a positive integer' }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } },
+      )
+    }
+
+    if (typeof driver_lat !== 'number' || typeof driver_lon !== 'number') {
+      return new Response(
+        JSON.stringify({ error: 'driver_lat and driver_lon must be numbers' }),
         { status: 400, headers: { 'Content-Type': 'application/json' } },
       )
     }
@@ -133,7 +147,7 @@ serve(async (req: Request) => {
     // Fetch the event — RLS ensures it's in the caller's org
     const { data: event, error: eventErr } = await userClient
       .from('events')
-      .select('assigned_driver_id')
+      .select('assigned_driver_id, status')
       .eq('id', event_id)
       .single()
 
@@ -148,6 +162,13 @@ serve(async (req: Request) => {
       return new Response(
         JSON.stringify({ error: 'You are not the assigned driver for this event' }),
         { status: 403, headers: { 'Content-Type': 'application/json' } },
+      )
+    }
+
+    if (event.status !== 'active') {
+      return new Response(
+        JSON.stringify({ error: 'Cannot schedule a route for a non-active event' }),
+        { status: 409, headers: { 'Content-Type': 'application/json' } },
       )
     }
 
@@ -190,41 +211,58 @@ serve(async (req: Request) => {
     // ── 4. Compute optimal order ──────────────────────────────
     const ordered = nearestNeighborOrder(driver_lat, driver_lon, users)
 
-    // ── 5. Persist pickup_order + eta_minutes to each row ─────
-    await Promise.all(
-      ordered.map((stop) =>
-        supabase
-          .from('pickup_requests')
-          .update({
-            pickup_order: stop.order,
-            eta_minutes:  stop.eta_minutes,
-            status:       'pending',  // keep pending; driver marks en_route/completed manually
-          })
-          .eq('id', stop.pickup_id)
-      ),
+    // ── 5. Persist pickup_order + eta_minutes atomically ──────
+    const { data: persisted, error: persistError } = await supabase.rpc(
+      'persist_pickup_route',
+      {
+        p_event_id: event_id,
+        p_ordered: ordered,
+      },
     )
 
-    // ── 6. Notify the first user in the sequence via FCM ─────
-    const firstStop = ordered[0]
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('fcm_token, full_name')
-      .eq('id', firstStop.id)
-      .single()
+    if (persistError) {
+      return new Response(
+        JSON.stringify({ error: persistError.message }),
+        { status: 500, headers: { 'Content-Type': 'application/json' } },
+      )
+    }
 
-    if (profile?.fcm_token) {
-      // Fire-and-forget — notification failure must not fail the route call
-      supabase.functions.invoke('send-notification', {
-        body: {
-          user_fcm_token: profile.fcm_token,
-          title: 'Your driver is on the way',
-          body:  `You are stop #1. ETA: ${firstStop.eta_minutes} minutes.`,
-        },
-      }).catch(() => { /* non-fatal */ })
+    // ── 6. Notify ordered attendees via FCM ──────────────────
+    const internalNotifyToken = Deno.env.get('INTERNAL_NOTIFY_TOKEN')
+    let notifiedCount = 0
+
+    if (internalNotifyToken) {
+      const userIds = ordered.map((stop) => stop.id)
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, fcm_token')
+        .in('id', userIds)
+
+      const tokenByUserId = new Map(
+        (profiles ?? [])
+          .filter((profile: any) => profile.fcm_token)
+          .map((profile: any) => [profile.id, profile.fcm_token]),
+      )
+
+      await Promise.all(ordered.map(async (stop) => {
+        const token = tokenByUserId.get(stop.id)
+        if (!token) return
+
+        const { error } = await supabase.functions.invoke('send-notification', {
+          headers: { 'x-internal-token': internalNotifyToken },
+          body: {
+            user_fcm_token: token,
+            title: stop.order === 1 ? 'Your driver is on the way' : 'Your pickup route is scheduled',
+            body:  `You are stop #${stop.order}. ETA: ${stop.eta_minutes} minutes.`,
+          },
+        })
+
+        if (!error) notifiedCount += 1
+      }))
     }
 
     return new Response(
-      JSON.stringify({ ordered }),
+      JSON.stringify({ ordered: persisted ?? ordered, notified_count: notifiedCount }),
       { status: 200, headers: { 'Content-Type': 'application/json' } },
     )
   } catch (err) {

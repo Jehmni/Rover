@@ -2,7 +2,7 @@
 -- ROVER — Full Schema Restore Script
 --
 -- PURPOSE: Restore the database to the correct state as defined
---          by schema.sql + v3 + v4 + v5 additions.
+--          by schema.sql + v3 + v4 + v5 + v6 + v7 additions.
 --          Safe to run on a database in any broken/partial state.
 --          Every statement is idempotent (DROP IF EXISTS, OR REPLACE,
 --          ADD COLUMN IF NOT EXISTS, etc.).
@@ -16,6 +16,7 @@
 -- ─────────────────────────────────────────────────────────────
 CREATE EXTENSION IF NOT EXISTS postgis;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 
 -- ─────────────────────────────────────────────────────────────
@@ -29,6 +30,10 @@ CREATE TABLE IF NOT EXISTS public.organisations (
   country    text,
   org_type   text NOT NULL DEFAULT 'church'
              CHECK (org_type IN ('church','conference','corporate','school','other')),
+  join_policy text NOT NULL DEFAULT 'open'
+             CHECK (join_policy IN ('open','approval','allowlist')),
+  driver_join_policy text NOT NULL DEFAULT 'approval'
+             CHECK (driver_join_policy IN ('approval','open')),
   created_at timestamptz DEFAULT now()
 );
 
@@ -93,6 +98,18 @@ CREATE TABLE IF NOT EXISTS public.pickup_requests (
   created_at      timestamptz DEFAULT now()
 );
 
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'pickup_requests_event_user_unique'
+      AND conrelid = 'public.pickup_requests'::regclass
+  ) THEN
+    ALTER TABLE public.pickup_requests
+      ADD CONSTRAINT pickup_requests_event_user_unique UNIQUE (event_id, user_id);
+  END IF;
+END $$;
+
 CREATE TABLE IF NOT EXISTS public.org_email_allowlist (
   id         BIGSERIAL PRIMARY KEY,
   org_id     UUID NOT NULL REFERENCES public.organisations(id) ON DELETE CASCADE,
@@ -106,6 +123,8 @@ CREATE TABLE IF NOT EXISTS public.org_join_requests (
   id         BIGSERIAL PRIMARY KEY,
   org_id     UUID NOT NULL REFERENCES public.organisations(id) ON DELETE CASCADE,
   user_id    UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  requested_role TEXT NOT NULL DEFAULT 'user'
+             CHECK (requested_role IN ('user', 'driver')),
   status     TEXT NOT NULL DEFAULT 'pending'
              CHECK (status IN ('pending', 'approved', 'rejected')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -143,6 +162,22 @@ UPDATE public.organisations SET org_token = gen_random_uuid() WHERE org_token IS
 ALTER TABLE public.organisations
   ADD COLUMN IF NOT EXISTS searchable BOOLEAN NOT NULL DEFAULT true;
 
+-- organisations — access control settings
+ALTER TABLE public.organisations
+  ADD COLUMN IF NOT EXISTS join_policy text NOT NULL DEFAULT 'open'
+    CHECK (join_policy IN ('open','approval','allowlist')),
+  ADD COLUMN IF NOT EXISTS driver_join_policy text NOT NULL DEFAULT 'approval'
+    CHECK (driver_join_policy IN ('approval','open'));
+
+UPDATE public.organisations
+SET join_policy = 'allowlist'
+WHERE org_type = 'conference'
+  AND join_policy = 'open';
+
+ALTER TABLE public.org_join_requests
+  ADD COLUMN IF NOT EXISTS requested_role TEXT NOT NULL DEFAULT 'user'
+    CHECK (requested_role IN ('user', 'driver'));
+
 
 -- ─────────────────────────────────────────────────────────────
 -- 3. CHECK CONSTRAINT  (events_date_not_past)
@@ -168,6 +203,28 @@ CREATE INDEX IF NOT EXISTS idx_pickups_event       ON public.pickup_requests   (
 CREATE INDEX IF NOT EXISTS idx_pickups_user        ON public.pickup_requests   (user_id);
 CREATE INDEX IF NOT EXISTS idx_invites_org         ON public.org_invites       (org_id);
 CREATE INDEX IF NOT EXISTS idx_invites_code        ON public.org_invites       (code);
+CREATE INDEX IF NOT EXISTS idx_organisations_org_token
+  ON public.organisations (org_token);
+CREATE INDEX IF NOT EXISTS idx_org_join_requests_status
+  ON public.org_join_requests (status);
+CREATE INDEX IF NOT EXISTS idx_profiles_org_role
+  ON public.profiles (org_id, role);
+CREATE INDEX IF NOT EXISTS idx_events_org_status_date
+  ON public.events (org_id, status, event_date);
+CREATE INDEX IF NOT EXISTS idx_events_driver_status_date
+  ON public.events (assigned_driver_id, status, event_date);
+CREATE INDEX IF NOT EXISTS idx_pickups_event_order
+  ON public.pickup_requests (event_id, pickup_order);
+CREATE INDEX IF NOT EXISTS idx_pickups_user_event_status
+  ON public.pickup_requests (user_id, event_id, status);
+CREATE INDEX IF NOT EXISTS idx_org_join_requests_org_status_created
+  ON public.org_join_requests (org_id, status, created_at);
+CREATE INDEX IF NOT EXISTS idx_organisations_name_trgm
+  ON public.organisations USING gin (name gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_organisations_city_trgm
+  ON public.organisations USING gin (city gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_events_name_trgm
+  ON public.events USING gin (name gin_trgm_ops);
 
 
 -- ═══════════════════════════════════════════════════════════════
@@ -211,12 +268,21 @@ BEGIN
     RAISE EXCEPTION 'Invalid organisation type.';
   END IF;
 
-  INSERT INTO public.organisations (name, city, country, org_type)
+  INSERT INTO public.organisations (
+    name,
+    city,
+    country,
+    org_type,
+    join_policy,
+    driver_join_policy
+  )
   VALUES (
     trim(org_name),
     NULLIF(trim(COALESCE(org_city, '')), ''),
     NULLIF(trim(COALESCE(org_country, '')), ''),
-    org_type
+    org_type,
+    CASE WHEN org_type = 'conference' THEN 'allowlist' ELSE 'open' END,
+    'approval'
   )
   RETURNING id INTO new_org_id;
 
@@ -326,7 +392,7 @@ BEGIN
 END;
 $$;
 
--- ── Join via QR/link token (v4 version with conference check) ──
+-- ── Join via QR/link token with org access policy ─────────────
 CREATE OR REPLACE FUNCTION public.join_organisation(
   p_token UUID,
   p_role  TEXT DEFAULT 'user'
@@ -339,7 +405,12 @@ AS $$
 DECLARE
   v_org   public.organisations%ROWTYPE;
   v_email TEXT;
+  v_policy TEXT;
 BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated.';
+  END IF;
+
   IF p_role NOT IN ('user', 'driver') THEN
     RAISE EXCEPTION 'Invalid role. Must be user or driver.';
   END IF;
@@ -349,25 +420,42 @@ BEGIN
     RAISE EXCEPTION 'Invalid or expired invite link. Ask your administrator to share a new one.';
   END IF;
 
-  -- Conference orgs with an allowlist: verify caller's email before joining
-  IF v_org.org_type = 'conference' THEN
+  v_policy := CASE
+    WHEN p_role = 'driver' THEN v_org.driver_join_policy
+    ELSE v_org.join_policy
+  END;
+
+  IF v_policy = 'approval' THEN
+    INSERT INTO public.org_join_requests (org_id, user_id, requested_role, status)
+    VALUES (v_org.id, auth.uid(), p_role, 'pending')
+    ON CONFLICT (org_id, user_id) DO UPDATE
+      SET requested_role = EXCLUDED.requested_role,
+          status = 'pending',
+          created_at = now()
+      WHERE public.org_join_requests.status != 'approved';
+
+    RETURN 'pending';
+  END IF;
+
+  IF v_policy = 'allowlist' THEN
     v_email := (SELECT email FROM auth.users WHERE id = auth.uid());
 
-    IF EXISTS (
-      SELECT 1 FROM public.org_email_allowlist WHERE org_id = v_org.id LIMIT 1
+    IF v_email IS NULL OR NOT EXISTS (
+      SELECT 1 FROM public.org_email_allowlist
+      WHERE org_id = v_org.id
+        AND lower(email) = lower(v_email)
+        AND claimed = false
     ) THEN
-      IF NOT EXISTS (
-        SELECT 1 FROM public.org_email_allowlist
-        WHERE org_id = v_org.id AND email = v_email AND claimed = false
-      ) THEN
-        RAISE EXCEPTION
-          'Your email is not on the attendee list for this event. '
-          'Contact the organiser if you believe this is a mistake.';
-      END IF;
-      UPDATE public.org_email_allowlist
-        SET claimed = true
-        WHERE org_id = v_org.id AND email = v_email;
+      RAISE EXCEPTION
+        'Your email is not on the approved attendee list. '
+        'Request access from the organiser if you believe this is a mistake.';
     END IF;
+
+    UPDATE public.org_email_allowlist
+      SET claimed = true
+      WHERE org_id = v_org.id
+        AND lower(email) = lower(v_email)
+        AND claimed = false;
   END IF;
 
   UPDATE public.profiles
@@ -442,7 +530,10 @@ BEGIN
   END IF;
 
   UPDATE public.org_join_requests SET status = 'approved' WHERE id = p_request_id;
-  UPDATE public.profiles SET org_id = v_req.org_id WHERE id = v_req.user_id;
+  UPDATE public.profiles
+  SET org_id = v_req.org_id,
+      role = v_req.requested_role
+  WHERE id = v_req.user_id;
 END;
 $$;
 
@@ -470,6 +561,88 @@ END;
 $$;
 
 GRANT EXECUTE ON FUNCTION public.reject_join_request(BIGINT) TO authenticated;
+
+-- ── Update org access settings (admin only) ───────────────────
+CREATE OR REPLACE FUNCTION public.update_org_access_settings(
+  p_join_policy TEXT,
+  p_driver_join_policy TEXT,
+  p_searchable BOOLEAN
+)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF get_my_role() != 'admin' OR get_my_org_id() IS NULL THEN
+    RAISE EXCEPTION 'Only organisation admins can update access settings.';
+  END IF;
+
+  IF p_join_policy NOT IN ('open', 'approval', 'allowlist') THEN
+    RAISE EXCEPTION 'Invalid attendee join policy.';
+  END IF;
+
+  IF p_driver_join_policy NOT IN ('approval', 'open') THEN
+    RAISE EXCEPTION 'Invalid driver join policy.';
+  END IF;
+
+  UPDATE public.organisations
+  SET join_policy = p_join_policy,
+      driver_join_policy = p_driver_join_policy,
+      searchable = COALESCE(p_searchable, searchable)
+  WHERE id = get_my_org_id();
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.update_org_access_settings(TEXT, TEXT, BOOLEAN) TO authenticated;
+
+-- ── Add allowlist email (admin only) ──────────────────────────
+CREATE OR REPLACE FUNCTION public.add_allowlist_email(p_email TEXT)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_email TEXT;
+BEGIN
+  IF get_my_role() != 'admin' OR get_my_org_id() IS NULL THEN
+    RAISE EXCEPTION 'Only organisation admins can manage the allowlist.';
+  END IF;
+
+  v_email := lower(trim(COALESCE(p_email, '')));
+  IF v_email = '' OR v_email !~* '^[^@]+@[^@]+\.[^@]+$' THEN
+    RAISE EXCEPTION 'Enter a valid email address.';
+  END IF;
+
+  INSERT INTO public.org_email_allowlist (org_id, email)
+  VALUES (get_my_org_id(), v_email)
+  ON CONFLICT (org_id, email) DO UPDATE
+    SET claimed = public.org_email_allowlist.claimed;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.add_allowlist_email(TEXT) TO authenticated;
+
+-- ── Remove allowlist email (admin only) ───────────────────────
+CREATE OR REPLACE FUNCTION public.remove_allowlist_email(p_id BIGINT)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF get_my_role() != 'admin' OR get_my_org_id() IS NULL THEN
+    RAISE EXCEPTION 'Only organisation admins can manage the allowlist.';
+  END IF;
+
+  DELETE FROM public.org_email_allowlist
+  WHERE id = p_id
+    AND org_id = get_my_org_id();
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.remove_allowlist_email(BIGINT) TO authenticated;
 
 -- ── Search organisations (server-side, injection-safe) ────────
 CREATE OR REPLACE FUNCTION public.search_organisations(p_query TEXT)
@@ -499,6 +672,68 @@ END;
 $$;
 
 GRANT EXECUTE ON FUNCTION public.search_organisations(TEXT) TO anon, authenticated;
+
+-- ── Persist pickup route atomically (Edge Function service-role path) ─────
+CREATE OR REPLACE FUNCTION public.persist_pickup_route(
+  p_event_id BIGINT,
+  p_ordered JSONB
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_expected INTEGER;
+  v_updated  INTEGER;
+BEGIN
+  IF p_ordered IS NULL OR jsonb_typeof(p_ordered) != 'array' THEN
+    RAISE EXCEPTION 'Ordered route payload must be a JSON array.';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM public.events
+    WHERE id = p_event_id
+      AND status = 'active'
+  ) THEN
+    RAISE EXCEPTION 'Event is not active or does not exist.';
+  END IF;
+
+  v_expected := jsonb_array_length(p_ordered);
+  IF v_expected = 0 THEN
+    RETURN p_ordered;
+  END IF;
+
+  WITH stops AS (
+    SELECT *
+    FROM jsonb_to_recordset(p_ordered)
+      AS x(pickup_id BIGINT, "order" INTEGER, eta_minutes INTEGER)
+  ),
+  updated AS (
+    UPDATE public.pickup_requests pr
+    SET pickup_order = stops."order",
+        eta_minutes  = stops.eta_minutes,
+        status       = 'pending'
+    FROM stops
+    WHERE pr.id = stops.pickup_id
+      AND pr.event_id = p_event_id
+      AND pr.status = 'pending'
+    RETURNING pr.id
+  )
+  SELECT count(*) INTO v_updated FROM updated;
+
+  IF v_updated != v_expected THEN
+    RAISE EXCEPTION
+      'Route persistence failed: updated % of % pickup rows.',
+      v_updated,
+      v_expected;
+  END IF;
+
+  RETURN p_ordered;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.persist_pickup_route(BIGINT, JSONB) TO service_role;
 
 
 -- ═══════════════════════════════════════════════════════════════
@@ -600,7 +835,12 @@ CREATE POLICY "profiles_insert_own"
 
 CREATE POLICY "profiles_update_own"
   ON public.profiles FOR UPDATE
-  USING (auth.uid() = id);
+  USING (auth.uid() = id)
+  WITH CHECK (
+    auth.uid() = id
+    AND role = public.get_my_role()
+    AND org_id IS NOT DISTINCT FROM public.get_my_org_id()
+  );
 
 -- ── ORG INVITES ───────────────────────────────────────────────
 CREATE POLICY "invites_select_admin"
@@ -666,7 +906,15 @@ CREATE POLICY "subs_select_admin"
 
 CREATE POLICY "subs_insert_own"
   ON public.event_subscriptions FOR INSERT
-  WITH CHECK (auth.uid() = user_id);
+  WITH CHECK (
+    auth.uid() = user_id
+    AND EXISTS (
+      SELECT 1 FROM public.events e
+      WHERE e.id = event_id
+        AND e.org_id = public.get_my_org_id()
+        AND e.status = 'active'
+    )
+  );
 
 CREATE POLICY "subs_delete_own"
   ON public.event_subscriptions FOR DELETE
@@ -688,13 +936,55 @@ CREATE POLICY "pickups_select_driver"
     )
   );
 
+CREATE POLICY "pickups_select_admin"
+  ON public.pickup_requests FOR SELECT
+  USING (
+    public.get_my_role() = 'admin'
+    AND EXISTS (
+      SELECT 1 FROM public.events e
+      WHERE e.id = event_id
+        AND e.org_id = public.get_my_org_id()
+    )
+  );
+
 CREATE POLICY "pickups_insert_own"
   ON public.pickup_requests FOR INSERT
-  WITH CHECK (auth.uid() = user_id);
+  WITH CHECK (
+    auth.uid() = user_id
+    AND EXISTS (
+      SELECT 1 FROM public.events e
+      WHERE e.id = event_id
+        AND e.org_id = public.get_my_org_id()
+        AND e.status = 'active'
+    )
+    AND EXISTS (
+      SELECT 1 FROM public.event_subscriptions s
+      WHERE s.event_id = event_id
+        AND s.user_id = auth.uid()
+    )
+  );
 
 CREATE POLICY "pickups_update_own"
   ON public.pickup_requests FOR UPDATE
-  USING (auth.uid() = user_id);
+  USING (
+    auth.uid() = user_id
+    AND EXISTS (
+      SELECT 1 FROM public.events e
+      WHERE e.id = event_id
+        AND e.org_id = public.get_my_org_id()
+    )
+  )
+  WITH CHECK (
+    auth.uid() = user_id
+    AND status = 'pending'
+    AND pickup_order IS NULL
+    AND eta_minutes IS NULL
+    AND EXISTS (
+      SELECT 1 FROM public.events e
+      WHERE e.id = event_id
+        AND e.org_id = public.get_my_org_id()
+    )
+  );
 
 CREATE POLICY "pickups_update_driver"
   ON public.pickup_requests FOR UPDATE
@@ -704,6 +994,16 @@ CREATE POLICY "pickups_update_driver"
       SELECT 1 FROM public.events e
       WHERE e.id = event_id
         AND e.assigned_driver_id = auth.uid()
+        AND e.org_id = public.get_my_org_id()
+    )
+  )
+  WITH CHECK (
+    public.get_my_role() = 'driver'
+    AND EXISTS (
+      SELECT 1 FROM public.events e
+      WHERE e.id = event_id
+        AND e.assigned_driver_id = auth.uid()
+        AND e.org_id = public.get_my_org_id()
     )
   );
 
@@ -711,6 +1011,9 @@ CREATE POLICY "pickups_update_driver"
 CREATE POLICY "allowlist_admin"
   ON public.org_email_allowlist FOR ALL
   USING (
+    public.get_my_role() = 'admin' AND org_id = public.get_my_org_id()
+  )
+  WITH CHECK (
     public.get_my_role() = 'admin' AND org_id = public.get_my_org_id()
   );
 
@@ -721,7 +1024,10 @@ CREATE POLICY "requests_own_select"
 
 CREATE POLICY "requests_own_insert"
   ON public.org_join_requests FOR INSERT
-  WITH CHECK (user_id = auth.uid());
+  WITH CHECK (
+    user_id = auth.uid()
+    AND requested_role IN ('user', 'driver')
+  );
 
 CREATE POLICY "requests_admin_select"
   ON public.org_join_requests FOR SELECT
