@@ -133,6 +133,13 @@ class RoverApp extends StatelessWidget {
       title: 'Rover',
       debugShowCheckedModeBanner: false,
       theme: RoverTheme.light,
+      // Force a 24-hour clock (e.g. 17:00) across the whole app — every time
+      // picker and TimeOfDay.format call — regardless of the device locale,
+      // matching how event times are displayed.
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+        child: child!,
+      ),
       initialRoute: '/',
       routes: {
         '/': (_) => const AuthGate(),
