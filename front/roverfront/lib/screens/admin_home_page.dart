@@ -182,6 +182,10 @@ class _EventsTabState extends State<_EventsTab> {
         : null;
     final isEdit = ev != null;
 
+    // Inline validation state (mutated via setDS).
+    String? nameError;
+    bool dateMissing = false;
+
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -194,23 +198,45 @@ class _EventsTabState extends State<_EventsTab> {
               children: [
                 TextField(
                   controller: nameCtrl,
-                  decoration: const InputDecoration(labelText: 'Event Name *'),
+                  decoration: InputDecoration(
+                    labelText: 'Event Name *',
+                    hintText: 'e.g. Sunday Service',
+                    border: const OutlineInputBorder(),
+                    errorText: nameError,
+                  ),
+                  onChanged: (_) {
+                    if (nameError != null) setDS(() => nameError = null);
+                  },
                 ),
+                const SizedBox(height: 12),
                 TextField(
                   controller: descCtrl,
-                  decoration: const InputDecoration(labelText: 'Description'),
+                  decoration: const InputDecoration(
+                    labelText: 'Description',
+                    hintText: 'e.g. Mega Praise Service',
+                    border: OutlineInputBorder(),
+                  ),
                   maxLines: 2,
                 ),
+                const SizedBox(height: 12),
                 TextField(
                   controller: typeCtrl,
                   decoration: const InputDecoration(
-                      labelText: 'Type  (e.g. Conference, Sports)'),
+                    labelText: 'Type  (e.g. Conference, Sports)',
+                    hintText: 'e.g. Sunday main service',
+                    border: OutlineInputBorder(),
+                  ),
                 ),
+                const SizedBox(height: 12),
                 TextField(
                   controller: locCtrl,
-                  decoration: const InputDecoration(labelText: 'Location Name'),
+                  decoration: const InputDecoration(
+                    labelText: 'Location Name',
+                    hintText: 'e.g. Uyo',
+                    border: OutlineInputBorder(),
+                  ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
                 Row(
                   children: [
                     Expanded(
@@ -219,6 +245,7 @@ class _EventsTabState extends State<_EventsTab> {
                         decoration: const InputDecoration(
                           labelText: 'Latitude',
                           hintText: '51.5074',
+                          border: OutlineInputBorder(),
                         ),
                         keyboardType: const TextInputType.numberWithOptions(
                           signed: true,
@@ -233,6 +260,7 @@ class _EventsTabState extends State<_EventsTab> {
                         decoration: const InputDecoration(
                           labelText: 'Longitude',
                           hintText: '-0.1278',
+                          border: OutlineInputBorder(),
                         ),
                         keyboardType: const TextInputType.numberWithOptions(
                           signed: true,
@@ -281,22 +309,34 @@ class _EventsTabState extends State<_EventsTab> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        pickedDate == null
-                            ? 'No date/time selected'
-                            : '${pickedDate!.day}/${pickedDate!.month}/${pickedDate!.year}  '
-                                '${pickedDate!.hour.toString().padLeft(2, '0')}:'
-                                '${pickedDate!.minute.toString().padLeft(2, '0')}',
-                        style: TextStyle(
-                          color: pickedDate == null ? RoverColors.error : null,
+                Container(
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: dateMissing
+                          ? RoverColors.error
+                          : Theme.of(ctx).colorScheme.outline,
+                    ),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  padding: const EdgeInsets.only(left: 12),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          pickedDate == null
+                              ? 'No date/time selected *'
+                              : '${pickedDate!.day}/${pickedDate!.month}/${pickedDate!.year}  '
+                                  '${pickedDate!.hour.toString().padLeft(2, '0')}:'
+                                  '${pickedDate!.minute.toString().padLeft(2, '0')}',
+                          style: TextStyle(
+                            color: (pickedDate == null || dateMissing)
+                                ? RoverColors.error
+                                : null,
+                          ),
                         ),
                       ),
-                    ),
-                    TextButton(
-                      child: const Text('Pick Date & Time'),
+                      TextButton(
+                        child: const Text('Pick Date & Time'),
                       onPressed: () async {
                         final d = await showDatePicker(
                           context: ctx,
@@ -318,13 +358,29 @@ class _EventsTabState extends State<_EventsTab> {
                               : const TimeOfDay(hour: 9, minute: 0),
                         );
                         if (t != null) {
-                          setDS(() => pickedDate = DateTime(
-                              d.year, d.month, d.day, t.hour, t.minute));
+                          setDS(() {
+                            pickedDate = DateTime(
+                                d.year, d.month, d.day, t.hour, t.minute);
+                            dateMissing = false;
+                          });
                         }
                       },
-                    ),
-                  ],
+                      ),
+                    ],
+                  ),
                 ),
+                if (dateMissing)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6, left: 12),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Date & time is required',
+                        style: TextStyle(
+                            color: RoverColors.error, fontSize: 12),
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -338,11 +394,13 @@ class _EventsTabState extends State<_EventsTab> {
                   FilledButton.styleFrom(backgroundColor: RoverColors.primary),
               child: Text(isEdit ? 'Save' : 'Create'),
               onPressed: () async {
-                if (nameCtrl.text.trim().isEmpty || pickedDate == null) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                    content: Text('Name and date/time are required.'),
-                    backgroundColor: RoverColors.error,
-                  ));
+                final nameEmpty = nameCtrl.text.trim().isEmpty;
+                final noDate = pickedDate == null;
+                if (nameEmpty || noDate) {
+                  setDS(() {
+                    nameError = nameEmpty ? 'Event name is required' : null;
+                    dateMissing = noDate;
+                  });
                   return;
                 }
                 double? latitude;
