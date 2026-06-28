@@ -1,0 +1,8 @@
+{
+  // The Flutter SDK is installed locally at ./flutter (its own git repo on the
+  // stable channel) and is gitignored. Tell VS Code not to surface it as a
+  // source-control root so the bogus "Sync Changes 1465 53" prompt disappears.
+  // Update the SDK with `flutter upgrade`, never via VS Code sync.
+  "git.ignoredRepositories": ["flutter"],
+  "git.openRepositoryInParentFolders": "never"
+}
