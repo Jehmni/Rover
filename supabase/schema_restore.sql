@@ -184,9 +184,13 @@ ALTER TABLE public.org_join_requests
 -- ─────────────────────────────────────────────────────────────
 ALTER TABLE public.events
   DROP CONSTRAINT IF EXISTS events_date_not_past;
+-- NOT VALID: enforce the rule on new and updated events, but do NOT reject
+-- pre-existing past events (completed/old rows). Without this, the restore
+-- fails with 23514 on any database that already holds past events, and the
+-- whole transaction (incl. the requested_role column) rolls back.
 ALTER TABLE public.events
   ADD CONSTRAINT events_date_not_past
-    CHECK (event_date > now() - interval '1 hour');
+    CHECK (event_date > now() - interval '1 hour') NOT VALID;
 
 
 -- ─────────────────────────────────────────────────────────────
